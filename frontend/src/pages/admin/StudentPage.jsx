@@ -1,22 +1,19 @@
 import { useState, useEffect } from "react";
 import { adminAPI } from "../../services/api";
-import EnhancedButton from "../../components/UI/EnhancedButton";
-import EnhancedInput from "../../components/UI/EnhancedInput";
+import AdminMobileShell from "../../components/AdminMobileShell";
 
 export default function StudentPage() {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [editingId, setEditingId] = useState(null);
-  const [toast, setToast] = useState(null);
+  const [error, setError] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [editForm, setEditForm] = useState({
     name: "",
     email: "",
     studentId: "",
     phone: "",
-    department: "",
-    class: "",
   });
 
   // Fetch students on mount
@@ -29,9 +26,10 @@ export default function StudentPage() {
       setLoading(true);
       const response = await adminAPI.students.list();
       setStudents(response.data || []);
+      setError("");
     } catch (err) {
       console.error("Failed to load students:", err);
-      setToast({ type: "error", message: "Failed to load students" });
+      setError("Failed to load students");
     } finally {
       setLoading(false);
     }
@@ -44,48 +42,41 @@ export default function StudentPage() {
       email: student.email || "",
       studentId: student.studentId || "",
       phone: student.phone || "",
-      department: student.department?._id || "",
-      class: student.class?._id || "",
     });
   };
 
   const handleSaveEdit = async () => {
     try {
       if (!editForm.name.trim() || !editForm.email.trim()) {
-        setToast({ type: "error", message: "Name and email are required" });
+        setError("Name and email are required");
         return;
       }
 
-      const updateData = {
+      await adminAPI.students.update(editingId, {
         name: editForm.name.trim(),
         email: editForm.email.trim(),
-        studentId: editForm.studentId.trim(),
-        phone: editForm.phone.trim(),
-        department: editForm.department || undefined,
-        class: editForm.class || undefined,
-      };
+        studentId: editForm.studentId.trim() || undefined,
+        phone: editForm.phone.trim() || undefined,
+      });
 
-      await adminAPI.students.update(editingId, updateData);
-      setToast({ type: "success", message: "Student updated successfully" });
+      setError("");
       setEditingId(null);
       await loadStudents();
     } catch (err) {
       console.error("Failed to update student:", err);
-      const errorMsg = err.response?.data?.error || "Failed to update student";
-      setToast({ type: "error", message: errorMsg });
+      setError(err.response?.data?.error || "Failed to update student");
     }
   };
 
   const handleDelete = async (studentId) => {
     try {
       await adminAPI.students.delete(studentId);
-      setToast({ type: "success", message: "Student deleted successfully" });
+      setError("");
       setShowDeleteConfirm(null);
       await loadStudents();
     } catch (err) {
       console.error("Failed to delete student:", err);
-      const errorMsg = err.response?.data?.error || "Failed to delete student";
-      setToast({ type: "error", message: errorMsg });
+      setError(err.response?.data?.error || "Failed to delete student");
     }
   };
 
@@ -96,199 +87,170 @@ export default function StudentPage() {
       (s.studentId && s.studentId.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  if (loading) {
+    return (
+      <AdminMobileShell title="Students" subtitle="Loading...">
+        <div className="space-y-3">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div
+              key={i}
+              className="bg-white rounded-xl border border-gray-100 p-4 animate-pulse"
+            >
+              <div className="h-5 bg-gray-200 rounded w-3/4 mb-2"></div>
+              <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+            </div>
+          ))}
+        </div>
+      </AdminMobileShell>
+    );
+  }
+
   return (
-    <div className="admin-page">
-      {toast && (
-        <div className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg text-white z-50 ${
-          toast.type === 'error' ? 'bg-red-500' :
-          toast.type === 'success' ? 'bg-green-500' :
-          'bg-blue-500'
-        }`}>
-          {toast.message}
-          <button
-            onClick={() => setToast(null)}
-            className="ml-4 font-bold hover:opacity-75"
-          >
-            ✕
-          </button>
+    <AdminMobileShell
+      title="Students"
+      subtitle={`${students.length} registered students`}
+      headerColor="bg-gradient-to-r from-indigo-600 to-purple-700"
+    >
+      {error && (
+        <div className="p-4 bg-red-50 text-red-700 rounded-xl text-sm border border-red-200 mb-4">
+          {error}
         </div>
       )}
 
-      <div className="page-header mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Manage Students</h1>
-        <p className="text-gray-600">View, edit, and delete student information</p>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
+        <input
+          type="text"
+          placeholder="Search by name, email, or student ID..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+        />
+        <p className="text-sm text-gray-600 mt-2">
+          {filteredStudents.length} of {students.length} students
+        </p>
       </div>
 
-      <div className="search-bar mb-6">
-        <div className="flex gap-3 items-center">
-          <EnhancedInput
-            type="text"
-            placeholder="Search by name, email, or student ID..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            icon="🔍"
-          />
-          <span className="result-count text-sm text-gray-600 whitespace-nowrap">{filteredStudents.length} of {students.length} students</span>
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="loading">Loading students...</div>
-      ) : filteredStudents.length === 0 ? (
-        <div className="empty-state">
-          <p>
-            {searchTerm
-              ? "No students match your search"
-              : "No students registered yet"}
+      {filteredStudents.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
+          <p className="text-gray-500">
+            {searchTerm ? "No students match your search" : "No students registered yet"}
           </p>
         </div>
       ) : (
-        <div className="table-container">
-          <table className="students-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Student ID</th>
-                <th>Department</th>
-                <th>Class</th>
-                <th>Phone</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredStudents.map((student) => (
-                <tr key={student._id}>
-                  {editingId === student._id ? (
-                    <>
-                      <td>
-                        <EnhancedInput
-                          type="text"
-                          value={editForm.name}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, name: e.target.value })
-                          }
-                          placeholder="Name"
-                        />
-                      </td>
-                      <td>
-                        <EnhancedInput
-                          type="email"
-                          value={editForm.email}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, email: e.target.value })
-                          }
-                          placeholder="Email"
-                        />
-                      </td>
-                      <td>
-                        <EnhancedInput
-                          type="text"
-                          value={editForm.studentId}
-                          onChange={(e) =>
-                            setEditForm({
-                              ...editForm,
-                              studentId: e.target.value,
-                            })
-                          }
-                          placeholder="Student ID"
-                        />
-                      </td>
-                      <td>
-                        <span>{student.department?.name || "N/A"}</span>
-                      </td>
-                      <td>
-                        <span>{student.class?.name || "N/A"}</span>
-                      </td>
-                      <td>
-                        <EnhancedInput
-                          type="text"
-                          value={editForm.phone}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, phone: e.target.value })
-                          }
-                          placeholder="Phone"
-                        />
-                      </td>
-                      <td>
-                        <div className="action-buttons">
-                          <EnhancedButton
-                            onClick={handleSaveEdit}
-                            variant="primary"
-                            size="small"
-                          >
-                            Save
-                          </EnhancedButton>
-                          <EnhancedButton
-                            onClick={() => setEditingId(null)}
-                            variant="secondary"
-                            size="small"
-                          >
-                            Cancel
-                          </EnhancedButton>
-                        </div>
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td>{student.name}</td>
-                      <td>{student.email}</td>
-                      <td>{student.studentId || "N/A"}</td>
-                      <td>{student.department?.name || "N/A"}</td>
-                      <td>{student.class?.name || "N/A"}</td>
-                      <td>{student.phone || "N/A"}</td>
-                      <td>
-                        <div className="action-buttons">
-                          <EnhancedButton
-                            onClick={() => handleEdit(student)}
-                            variant="secondary"
-                            size="small"
-                          >
-                            Edit
-                          </EnhancedButton>
-                          <EnhancedButton
-                            onClick={() => setShowDeleteConfirm(student._id)}
-                            variant="danger"
-                            size="small"
-                          >
-                            Delete
-                          </EnhancedButton>
-                        </div>
-                      </td>
-                    </>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          {filteredStudents.map((student) =>
+            editingId === student._id ? (
+              <div key={student._id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    placeholder="Name"
+                    className="w-full p-3 border border-gray-300 rounded-lg text-sm"
+                  />
+                  <input
+                    type="email"
+                    value={editForm.email}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                    placeholder="Email"
+                    className="w-full p-3 border border-gray-300 rounded-lg text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={editForm.studentId}
+                    onChange={(e) => setEditForm({ ...editForm, studentId: e.target.value })}
+                    placeholder="Student ID"
+                    className="w-full p-3 border border-gray-300 rounded-lg text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                    placeholder="Phone"
+                    className="w-full p-3 border border-gray-300 rounded-lg text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSaveEdit}
+                      className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div
+                key={student._id}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 hover:shadow-md transition-shadow"
+              >
+                <div className="flex justify-between items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-gray-900 truncate">{student.name}</h3>
+                    <p className="text-sm text-gray-600 truncate">{student.email}</p>
+                    {student.studentId && (
+                      <p className="text-xs text-gray-500 mt-1">ID: {student.studentId}</p>
+                    )}
+                    {student.department && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {student.department.name}
+                        {student.class && ` • ${student.class.name}`}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleEdit(student)}
+                      className="px-3 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors text-xs font-medium whitespace-nowrap"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(student._id)}
+                      className="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-xs font-medium whitespace-nowrap"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          )}
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="modal-overlay" onClick={() => setShowDeleteConfirm(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Delete Student?</h3>
-            <p>
-              This action cannot be undone. The student will be permanently
-              removed from the system.
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Student?</h3>
+            <p className="text-gray-600 mb-6">
+              This action cannot be undone. The student will be permanently removed from the system.
             </p>
-            <div className="modal-buttons">
-              <EnhancedButton
+            <div className="flex gap-3">
+              <button
                 onClick={() => setShowDeleteConfirm(null)}
-                variant="secondary"
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-medium"
               >
                 Cancel
-              </EnhancedButton>
-              <EnhancedButton
+              </button>
+              <button
                 onClick={() => handleDelete(showDeleteConfirm)}
-                variant="danger"
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
               >
                 Delete
-              </EnhancedButton>
+              </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </AdminMobileShell>
   );
 }
