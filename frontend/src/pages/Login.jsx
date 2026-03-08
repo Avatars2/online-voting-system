@@ -80,6 +80,7 @@ export default function Login() {
 
     setLoading(true);
     try {
+      // Try API login for MongoDB Atlas database users
       const res = await authAPI.login(formData.email.trim().toLowerCase(), formData.password);
       const { token, redirect, role } = res.data || {};
       
@@ -94,7 +95,9 @@ export default function Login() {
       
       success('Login successful! Redirecting...');
       setTimeout(() => navigate(redirect), 1000);
+      
     } catch (err) {
+      console.error("Login error:", err);
       showError(err.response?.data?.error || "Login failed. Please try again.");
     } finally {
       setLoading(false);

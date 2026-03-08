@@ -7,6 +7,7 @@ const MENU = [
   { label: "Elections", path: "/student/elections", icon: "🗳️" },
   { label: "Results", path: "/student/results", icon: "📊" },
   { label: "Profile", path: "/student/profile", icon: "👤" },
+  { label: "Reset Password", path: "/student/reset-password", icon: "🔒" },
 ];
 
 export default function StudentMobileShell({

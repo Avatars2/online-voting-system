@@ -131,7 +131,7 @@ export default function ElectionCreate() {
     }
     setLoading(true);
     try {
-      await adminAPI.elections.addCandidate(selectedElection, {
+      await adminAPI.addCandidate(selectedElection, {
         userId: selectedStudent,
         position: candidatePosition.trim() || "Candidate",
       });

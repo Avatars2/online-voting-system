@@ -1,40 +1,45 @@
 import { useState, useEffect, useCallback } from "react";
-import { adminAPI } from "../../services/api";
+import { useNavigate, useLocation } from "react-router-dom";
+import { authAPI, adminAPI } from "../../services/api";
 import AdminMobileShell from "../../components/AdminMobileShell";
 
-export default function ClassPage() {
-  console.log("ClassPage rendering - registerTeacher state should be available");
+export default function HODClassManagement() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [user, setUser] = useState(null);
+  const [department, setDepartment] = useState(null);
+  const [classes, setClasses] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  // Form states matching admin ClassPage
   const [className, setClassName] = useState("");
-  const [departmentId, setDepartmentId] = useState("");
   const [year, setYear] = useState("");
   const [teacherName, setTeacherName] = useState("");
   const [teacherEmail, setTeacherEmail] = useState("");
   const [teacherPassword, setTeacherPassword] = useState("");
   const [teacherPhone, setTeacherPhone] = useState("");
   const [registerTeacher, setRegisterTeacher] = useState(false);
-  const [classes, setClasses] = useState([]);
-  const [departments, setDepartments] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
   const fetchData = useCallback(async () => {
     try {
       setError("");
-      const [classesRes, deptRes] = await Promise.all([
-        adminAPI.classes.list(),
-        adminAPI.departments.list(),
-      ]);
-      setClasses(classesRes.data || []);
-      setDepartments(deptRes.data || []);
-      if (!departmentId && deptRes.data?.length > 0) {
-        setDepartmentId(deptRes.data[0]._id);
+      const userResponse = await authAPI.verifyToken();
+      setUser(userResponse.data);
+
+      if (userResponse.data.assignedDepartment) {
+        const [deptResponse, classesResponse] = await Promise.all([
+          adminAPI.getDepartment(userResponse.data.assignedDepartment),
+          adminAPI.classes.list(userResponse.data.assignedDepartment)
+        ]);
+        setDepartment(deptResponse.data);
+        setClasses(classesResponse.data || []);
       }
     } catch (err) {
       setError(err.response?.data?.error || "Failed to load data");
       setClasses([]);
-      setDepartments([]);
     }
-  }, [departmentId]);
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -45,40 +50,39 @@ export default function ClassPage() {
       setError("Class name is required");
       return;
     }
-    if (!departmentId) {
-      setError("Please select a department");
+    if (!department) {
+      setError("Department information not available");
       return;
     }
-    
-    if (registerTeacher) {
-      if (!teacherEmail.trim() || !teacherPassword.trim()) {
-        setError("Teacher email and password are required when registering teacher");
-        return;
-      }
-      if (!teacherEmail.includes("@")) {
-        setError("Please enter a valid email address");
-        return;
-      }
+    if (registerTeacher && (!teacherEmail.trim() || !teacherPassword.trim())) {
+      setError("Teacher email and password are required when registering teacher");
+      return;
     }
-    
-    setLoading(true);
-    setError("");
-    
-    const payload = { 
-      name: className.trim(), 
-      department: departmentId,
-      year: year.trim() || undefined
-    };
-    
-    if (registerTeacher) {
-      payload.teacherEmail = teacherEmail.trim();
-      payload.teacherPassword = teacherPassword;
-      payload.teacherPhone = teacherPhone.trim();
-      payload.teacher = teacherName.trim() || `Teacher of ${className.trim()}`;
+    if (registerTeacher && !teacherEmail.includes("@")) {
+      setError("Please enter a valid email address");
+      return;
     }
-    
+
     try {
+      setLoading(true);
+      setError("");
+      
+      const payload = { 
+        name: className.trim(), 
+        department: department._id,
+        year: year.trim() || undefined
+      };
+      
+      if (registerTeacher) {
+        payload.teacherEmail = teacherEmail.trim();
+        payload.teacherPassword = teacherPassword;
+        payload.teacherPhone = teacherPhone.trim();
+        payload.teacher = teacherName.trim() || `Teacher of ${className.trim()}`;
+      }
+      
       await adminAPI.classes.create(payload);
+      
+      // Reset form
       setClassName("");
       setYear("");
       setTeacherName("");
@@ -86,6 +90,8 @@ export default function ClassPage() {
       setTeacherPassword("");
       setTeacherPhone("");
       setRegisterTeacher(false);
+      
+      // Refresh classes list
       fetchData();
     } catch (err) {
       setError(err.response?.data?.error || "Failed to create class");
@@ -94,11 +100,25 @@ export default function ClassPage() {
     }
   };
 
+  if (!department) {
+    return (
+      <AdminMobileShell
+        title="Class Management"
+        subtitle="Create and view classes"
+        headerColor="bg-gradient-to-r from-green-600 to-teal-700"
+      >
+        <div className="flex items-center justify-center h-64">
+          <div className="text-gray-600">Loading...</div>
+        </div>
+      </AdminMobileShell>
+    );
+  }
+
   return (
     <AdminMobileShell
-      title="Class Manager"
-      subtitle="Create and view classes"
-      headerColor="bg-gradient-to-r from-indigo-600 to-purple-700"
+      title="Class Management"
+      subtitle={`${department.name} Classes`}
+      headerColor="bg-gradient-to-r from-green-600 to-teal-700"
     >
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
@@ -109,19 +129,12 @@ export default function ClassPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
         <div className="font-bold text-gray-900 mb-3">Add Class</div>
         <div className="space-y-3">
-          <select
-            className="input-base"
-            value={departmentId}
-            onChange={(e) => setDepartmentId(e.target.value)}
-            disabled={loading}
-          >
-            <option value="">Select Department</option>
-            {departments.map((d) => (
-              <option key={d._id} value={d._id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
+          {/* Department Info (readonly for HOD) */}
+          <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+            <div className="text-sm text-gray-600">Department</div>
+            <div className="font-medium text-gray-900">{department.name}</div>
+          </div>
+          
           <input
             type="text"
             className="input-base"
@@ -144,10 +157,7 @@ export default function ClassPage() {
               type="checkbox"
               id="registerTeacher"
               checked={registerTeacher}
-              onChange={(e) => {
-                console.log("Checkbox clicked:", e.target.checked);
-                setRegisterTeacher(e.target.checked);
-              }}
+              onChange={(e) => setRegisterTeacher(e.target.checked)}
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <label htmlFor="registerTeacher" className="text-sm font-medium text-gray-700">
@@ -212,9 +222,6 @@ export default function ClassPage() {
             classes.map((cls) => (
               <div key={cls._id} className="p-4 border rounded-xl bg-white">
                 <div className="font-semibold text-gray-900">{cls.name}</div>
-                {cls.department?.name ? (
-                  <div className="text-sm text-gray-600 mt-1">{cls.department.name}</div>
-                ) : null}
                 {cls.year && (
                   <div className="text-sm text-gray-500 mt-1">{cls.year}</div>
                 )}
@@ -228,6 +235,16 @@ export default function ClassPage() {
             ))
           )}
         </div>
+      </div>
+
+      {/* Back to Department Button */}
+      <div className="mt-4">
+        <button
+          onClick={() => navigate("/hod/department")}
+          className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-gray-100 transition"
+        >
+          Back to Department
+        </button>
       </div>
     </AdminMobileShell>
   );

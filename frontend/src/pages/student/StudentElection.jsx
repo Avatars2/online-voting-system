@@ -79,8 +79,8 @@ export default function StudentElection() {
                     ) : null}
                     {(election.startDate || election.endDate) ? (
                       <p className="text-xs text-gray-600 mt-2">
-                        📅 {election.startDate ? new Date(election.startDate).toLocaleDateString() : ""}{" "}
-                        - {election.endDate ? new Date(election.endDate).toLocaleDateString() : ""}
+                        📅 {election.startDate ? new Date(election.startDate).toLocaleString() : ""}{" "}
+                        - {election.endDate ? new Date(election.endDate).toLocaleString() : ""}
                       </p>
                     ) : null}
                   </div>

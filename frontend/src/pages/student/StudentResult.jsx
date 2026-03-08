@@ -1,17 +1,19 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { studentAPI } from "../../services/api";
 import StudentMobileShell from "../../components/StudentMobileShell";
 
 export default function StudentResult() {
+  const navigate = useNavigate();
   const [elections, setElections] = useState([]);
-  const [selectedElection, setSelectedElection] = useState(null);
-  const [results, setResults] = useState([]);
-  const [winner, setWinner] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     const fetchElections = async () => {
+      setLoading(true);
+      setError("");
       try {
         const res = await studentAPI.elections();
         const allElections = res.data || [];
@@ -22,44 +24,20 @@ export default function StudentResult() {
           return endDate && endDate < now;
         });
         setElections(completedElections);
-        setSelectedElection((prev) => prev || (completedElections[0]?._id || null));
-      } catch {
+      } catch (err) {
+        setError(err.response?.data?.error || "Failed to load elections");
         setElections([]);
+      } finally {
+        setLoading(false);
       }
     };
     fetchElections();
   }, []);
 
-  useEffect(() => {
-    if (!selectedElection) {
-      setResults([]);
-      setWinner(null);
-      return;
-    }
-    const fetchResults = async () => {
-      setLoading(true);
-      setError("");
-      try {
-        const res = await studentAPI.getElectionCandidates(selectedElection);
-        const candidates = res.data?.candidates || [];
-        const sortedCandidates = candidates.sort((a, b) => (b.votes || 0) - (a.votes || 0));
-        setResults(sortedCandidates);
-        // Set winner as the candidate with most votes
-        if (sortedCandidates.length > 0) {
-          setWinner(sortedCandidates[0]);
-        }
-      } catch {
-        setError("Failed to load results");
-        setResults([]);
-        setWinner(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchResults();
-  }, [selectedElection]);
-
-  const maxVotes = Math.max(...results.map((r) => r.votes || 0), 1);
+  // Filter elections for search
+  const filteredElections = elections.filter((e) =>
+    !search ? true : String(e.title || "").toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <StudentMobileShell
@@ -73,68 +51,57 @@ export default function StudentResult() {
         </div>
       )}
 
-      {elections.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Select Election</label>
-          <select
-            className="input-base"
-            value={selectedElection || ""}
-            onChange={(e) => setSelectedElection(e.target.value || null)}
-          >
-            {elections.map((e) => (
-              <option key={e._id} value={e._id}>
-                {e.title} {e.endDate && `(Ended: ${new Date(e.endDate).toLocaleDateString()})`}
-              </option>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <input
+          className="input-base"
+          placeholder="Search elections..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="animate-spin text-2xl mb-2">⏳</div>
+            <div className="text-gray-600">Loading elections...</div>
+          </div>
+        ) : filteredElections.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {filteredElections.map((e) => (
+              <button
+                key={e._id}
+                onClick={() => navigate(`/student/results/detail?electionId=${e._id}`)}
+                className="w-full text-left p-4 rounded-xl border hover:border-emerald-300 hover:bg-emerald-50 transition"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-gray-900 truncate">{e.title}</div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      {e.level === "department"
+                        ? `Department`
+                        : e.level === "class"
+                          ? `Class`
+                          : `All College (Global)`}
+                      {e.endDate && ` • Ended: ${new Date(e.endDate).toLocaleString()}`}
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    {typeof e.candidateCount === "number" ? `${e.candidateCount} candidates` : ""}
+                  </div>
+                </div>
+              </button>
             ))}
-          </select>
-        </div>
-      )}
-
-      {loading ? (
-        <div className="text-white/90 text-sm">Loading...</div>
-      ) : results.length > 0 ? (
-        <>
-          {winner && (
-            <div className="bg-white rounded-2xl shadow-sm border border-yellow-200 p-4">
-              <div className="text-xs font-semibold text-yellow-700 uppercase">Official Winner</div>
-              <div className="mt-2 flex items-center justify-between">
-                <div>
-                  <div className="text-lg font-bold text-gray-900">{winner.name}</div>
-                  {winner.position ? <div className="text-sm text-gray-600">{winner.position}</div> : null}
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-yellow-700">{winner.votes || 0}</div>
-                  <div className="text-xs text-gray-600">votes</div>
-                </div>
-              </div>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <div className="text-gray-600">
+              {search ? "No elections found matching your search." : "No completed elections available yet."}
             </div>
-          )}
-
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-            <div className="text-sm font-bold text-gray-700 uppercase mb-3">Vote Breakdown</div>
-            <div className="space-y-4">
-              {results.map((result) => (
-                <div key={result._id}>
-                  <div className="flex items-center justify-between text-sm mb-2">
-                    <div className="font-medium text-gray-900">{result.name}</div>
-                    <div className="text-gray-700">{result.votes || 0}</div>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2.5">
-                    <div
-                      className={`h-2.5 rounded-full ${winner?._id === result._id ? "bg-yellow-500" : "bg-emerald-600"}`}
-                      style={{ width: `${((result.votes || 0) / maxVotes) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+            <div className="text-xs text-gray-500 mt-1">
+              Results will be shown after elections end.
             </div>
           </div>
-        </>
-      ) : (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center text-gray-600">
-          No completed elections available yet. Results will be shown after elections end.
-        </div>
-      )}
+        )}
+      </div>
     </StudentMobileShell>
   );
 }

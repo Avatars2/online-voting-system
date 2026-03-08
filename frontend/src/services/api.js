@@ -7,6 +7,18 @@ const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+// Public API instance without authentication for registration
+const publicApi = axios.create({
+  baseURL: API_BASE_URL,
+  headers: { "Content-Type": "application/json" },
+});
+
+// Public registration API without token requirement
+export const publicAPI = {
+  registerHOD: (hodData) => publicApi.post("/auth/register/hod", hodData),
+  getDepartments: () => publicApi.get("/admin/departments"),
+};
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -43,9 +55,37 @@ export const adminAPI = {
   elections: { list: () => api.get("/admin/elections"), create: (d) => api.post("/admin/elections", d) },
   addCandidate: (electionId, d) => api.post(`/admin/elections/${electionId}/candidates`, d),
   results: (electionId) => api.get(`/admin/results/${electionId}`),
-  students: { list: () => api.get("/admin/students"), create: (d) => api.post("/admin/students", d) },
+  students: {
+    list: () => api.get("/admin/students"),
+    create: (d) => api.post("/admin/students", d),
+    update: (id, d) => api.put(`/admin/students/${id}`, d),
+    delete: (id) => api.delete(`/admin/students/${id}`)
+  },
   getDepartment: (id) => api.get(`/admin/departments/${id}`),
   getClass: (id) => api.get(`/admin/classes/${id}`),
+
+  // HOD API endpoints
+  hod: {
+    dashboard: () => api.get("/hod/dashboard"),
+    profile: () => api.get("/hod/profile"),
+    updateProfile: (d) => api.put("/hod/profile", d),
+    changePassword: (d) => api.put("/hod/change-password", d),
+    registerStudent: (d) => api.post("/hod/register-student", d),
+    createClass: (d) => api.post("/hod/classes", d),
+    listClasses: () => api.get("/hod/classes"),
+    registerTeacher: (d) => api.post("/hod/register-teacher", d),
+    listTeachers: () => api.get("/hod/teachers"),
+    createNotice: (d) => api.post("/hod/notices", d),
+    listNotices: () => api.get("/hod/notices"),
+    createElection: (d) => api.post("/hod/elections", d),
+    listElections: () => api.get("/hod/elections"),
+    addCandidate: (electionId, d) => api.post(`/hod/elections/${electionId}/candidates`, d),
+    getResults: (electionId) => api.get(`/hod/results/${electionId}`)
+  },
+
+  // Department HOD assignment
+  assignHodToDepartment: (deptId, hodData) => api.put(`/admin/departments/${deptId}/assign-hod`, hodData),
+  registerHodForDepartment: (deptId, hodData) => api.post(`/admin/departments/${deptId}/register-hod`, hodData),
 };
 
 export const studentAPI = {

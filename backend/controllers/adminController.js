@@ -157,6 +157,94 @@ export async function listStudents(req, res) {
   }
 }
 
+export async function updateStudent(req, res) {
+  try {
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid student ID" });
+    }
+
+    const { name, email, studentId, phone, department, class: classId } = req.body || {};
+
+    // Find the student
+    const student = await User.findById(id);
+    if (!student) {
+      return res.status(404).json({ error: "Student not found" });
+    }
+
+    if (student.role !== "student") {
+      return res.status(400).json({ error: "User is not a student" });
+    }
+
+    // Check for email uniqueness (if email is being changed)
+    if (email && email !== student.email) {
+      const normalizedNewEmail = String(email).trim().toLowerCase();
+      const existingEmail = await User.findOne({ email: normalizedNewEmail, _id: { $ne: id } });
+      if (existingEmail) {
+        return res.status(409).json({ error: "Email already in use by another user" });
+      }
+      student.email = normalizedNewEmail;
+    }
+
+    // Check for studentId uniqueness (if studentId is being changed)
+    if (studentId && studentId !== student.studentId) {
+      const normalizedStudentId = String(studentId).trim();
+      const existingStudentId = await User.findOne({ studentId: normalizedStudentId, _id: { $ne: id } });
+      if (existingStudentId) {
+        return res.status(409).json({ error: "Student ID already in use by another student" });
+      }
+      student.studentId = normalizedStudentId;
+    }
+
+    // Update other fields
+    if (name !== undefined) student.name = String(name).trim();
+    if (phone !== undefined) student.phone = phone ? String(phone).trim() : "";
+    if (department !== undefined) student.department = department || undefined;
+    if (classId !== undefined) student.class = classId || undefined;
+
+    await student.save();
+
+    const { password: _p, ...safeStudent } = student.toObject();
+    const populatedStudent = await User.findById(id).select("-password").populate("department class");
+
+    res.json(populatedStudent);
+  } catch (err) {
+    console.error("updateStudent error:", err);
+    if (err?.name === "ValidationError") {
+      const messages = Object.values(err.errors || {}).map((e) => e.message);
+      const msg = messages[0] || "Invalid data";
+      return res.status(400).json({ error: msg });
+    }
+    res.status(500).json({ error: "Server error updating student" });
+  }
+}
+
+export async function deleteStudent(req, res) {
+  try {
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid student ID" });
+    }
+
+    const student = await User.findById(id);
+    if (!student) {
+      return res.status(404).json({ error: "Student not found" });
+    }
+
+    if (student.role !== "student") {
+      return res.status(400).json({ error: "User is not a student" });
+    }
+
+    // Delete the student
+    await User.findByIdAndDelete(id);
+
+    res.json({ message: "Student deleted successfully", id });
+  } catch (err) {
+    console.error("deleteStudent error:", err);
+    res.status(500).json({ error: "Server error deleting student" });
+  }
+}
+
 export async function listDepartments(req, res) {
   try {
     const items = await Department.find();
@@ -169,10 +257,76 @@ export async function listDepartments(req, res) {
 
 export async function createDepartment(req, res) {
   try {
-    const { name, hod } = req.body || {};
+    const { name, hod, hodEmail, hodPassword, hodPhone } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: "Department name is required" });
-    const d = await Department.create({ name: String(name).trim(), hod: hod ? String(hod).trim() : undefined });
-    res.status(201).json(d);
+    
+    let hodId = null;
+    let createdHod = null;
+    
+    // Option 1: Create new HOD with email/password (takes priority)
+    if (hodEmail && hodPassword) {
+      // Validate password
+      const passwordValidation = validatePassword(hodPassword);
+      if (!passwordValidation.isValid) {
+        return res.status(400).json({ error: `HOD password: ${passwordValidation.error}` });
+      }
+      
+      // Check if HOD with this email already exists
+      const existingHod = await User.findOne({ email: hodEmail.toLowerCase().trim() });
+      if (existingHod) {
+        return res.status(400).json({ error: "HOD with this email already exists" });
+      }
+      
+      // Create new HOD user
+      createdHod = new User({
+        name: hod || `HOD of ${name}`,
+        email: hodEmail.toLowerCase().trim(),
+        password: hodPassword,
+        phone: hodPhone || '',
+        role: 'hod'
+      });
+      
+      await createdHod.save();
+      hodId = createdHod._id;
+    }
+    // Option 2: Use existing HOD by ID (only if not creating new HOD)
+    else if (hod) {
+      if (!mongoose.Types.ObjectId.isValid(hod)) {
+        return res.status(400).json({ error: "Invalid HOD ID format" });
+      }
+      // Verify HOD exists and has hod role
+      const hodUser = await User.findById(hod);
+      if (!hodUser || hodUser.role !== 'hod') {
+        return res.status(400).json({ error: "Invalid HOD user" });
+      }
+      hodId = hod;
+    }
+    
+    // Create department
+    const department = await Department.create({ 
+      name: String(name).trim(), 
+      hod: hodId 
+    });
+    
+    // If we created a new HOD, update their assignedDepartment
+    if (createdHod) {
+      createdHod.assignedDepartment = department._id;
+      await createdHod.save();
+    }
+    
+    // Populate and return response
+    const populatedDepartment = await Department.findById(department._id)
+      .populate('hod', 'name email');
+    
+    res.status(201).json({
+      department: populatedDepartment,
+      hod: createdHod ? {
+        id: createdHod._id,
+        name: createdHod.name,
+        email: createdHod.email,
+        role: createdHod.role
+      } : null
+    });
   } catch (err) {
     if (err.code === 11000) return res.status(409).json({ error: "Department already exists" });
     console.error("createDepartment error:", err);
@@ -205,14 +359,92 @@ export async function listClasses(req, res) {
 
 export async function createClass(req, res) {
   try {
-    const { name, department, year } = req.body || {};
+    const { name, department, year, teacher, teacherEmail, teacherPassword, teacherPhone } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: "Class name is required" });
-    const c = await ClassModel.create({
+    if (!department) return res.status(400).json({ error: "Department is required" });
+    
+    // Validate department ObjectId
+    if (!mongoose.Types.ObjectId.isValid(department)) {
+      return res.status(400).json({ error: "Invalid department ID format" });
+    }
+    
+    // Verify department exists
+    const departmentObj = await Department.findById(department);
+    if (!departmentObj) {
+      return res.status(404).json({ error: "Department not found" });
+    }
+    
+    let teacherId = null;
+    let createdTeacher = null;
+    
+    // Option 1: Create new teacher with email/password (takes priority)
+    if (teacherEmail && teacherPassword) {
+      // Validate password
+      const passwordValidation = validatePassword(teacherPassword);
+      if (!passwordValidation.isValid) {
+        return res.status(400).json({ error: `Teacher password: ${passwordValidation.error}` });
+      }
+      
+      // Check if teacher with this email already exists
+      const existingTeacher = await User.findOne({ email: teacherEmail.toLowerCase().trim() });
+      if (existingTeacher) {
+        return res.status(400).json({ error: "Teacher with this email already exists" });
+      }
+      
+      // Create new teacher user
+      createdTeacher = new User({
+        name: teacher || `Teacher of ${name}`,
+        email: teacherEmail.toLowerCase().trim(),
+        password: teacherPassword,
+        phone: teacherPhone || '',
+        role: 'teacher',
+        assignedDepartment: department
+      });
+      
+      await createdTeacher.save();
+      teacherId = createdTeacher._id;
+    }
+    // Option 2: Use existing teacher by ID (only if not creating new teacher)
+    else if (teacher) {
+      if (!mongoose.Types.ObjectId.isValid(teacher)) {
+        return res.status(400).json({ error: "Invalid teacher ID format" });
+      }
+      // Verify teacher exists and has teacher role
+      const teacherUser = await User.findById(teacher);
+      if (!teacherUser || teacherUser.role !== 'teacher') {
+        return res.status(400).json({ error: "Invalid teacher user" });
+      }
+      teacherId = teacher;
+    }
+    
+    // Create class
+    const classObj = await ClassModel.create({
       name: String(name).trim(),
-      department: department || undefined,
+      department: department,
       year: year ? String(year).trim() : undefined,
+      classTeacher: teacherId
     });
-    res.status(201).json(c);
+    
+    // If we created a new teacher, update their assignedClass
+    if (createdTeacher) {
+      createdTeacher.assignedClass = classObj._id;
+      await createdTeacher.save();
+    }
+    
+    // Populate and return response
+    const populatedClass = await ClassModel.findById(classObj._id)
+      .populate('department', 'name')
+      .populate('classTeacher', 'name email');
+    
+    res.status(201).json({
+      class: populatedClass,
+      teacher: createdTeacher ? {
+        id: createdTeacher._id,
+        name: createdTeacher.name,
+        email: createdTeacher.email,
+        role: createdTeacher.role
+      } : null
+    });
   } catch (err) {
     console.error("createClass error:", err);
     res.status(500).json({ error: "Server error" });

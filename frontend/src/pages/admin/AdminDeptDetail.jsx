@@ -1,14 +1,22 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { adminAPI } from "../../services/api";
 import AdminMobileShell from "../../components/AdminMobileShell";
+import { useToast } from "../../components/UI/Toast";
 
 export default function AdminDeptDetail() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { success, error: showError } = useToast();
   const [dept, setDept] = useState(null);
   const [classes, setClasses] = useState([]);
   const [className, setClassName] = useState("");
+  const [year, setYear] = useState("");
+  const [teacherName, setTeacherName] = useState("");
+  const [teacherEmail, setTeacherEmail] = useState("");
+  const [teacherPassword, setTeacherPassword] = useState("");
+  const [teacherPhone, setTeacherPhone] = useState("");
+  const [registerTeacher, setRegisterTeacher] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -25,15 +33,52 @@ export default function AdminDeptDetail() {
       setError("Class name is required");
       return;
     }
+    
+    if (registerTeacher) {
+      if (!teacherEmail.trim() || !teacherPassword.trim()) {
+        setError("Teacher email and password are required when registering teacher");
+        return;
+      }
+      if (!teacherEmail.includes("@")) {
+        setError("Please enter a valid email address");
+        return;
+      }
+    }
+    
     setLoading(true);
     setError("");
+    
+    const payload = { 
+      name: className.trim(), 
+      department: id,
+      year: year.trim() || undefined
+    };
+    
+    if (registerTeacher) {
+      payload.teacherEmail = teacherEmail.trim();
+      payload.teacherPassword = teacherPassword;
+      payload.teacherPhone = teacherPhone.trim();
+      payload.teacher = teacherName.trim() || `Teacher of ${className.trim()}`;
+    }
+    
     adminAPI.classes
-      .create({ name: className.trim(), department: id })
+      .create(payload)
       .then(() => {
         setClassName("");
+        setYear("");
+        setTeacherName("");
+        setTeacherEmail("");
+        setTeacherPassword("");
+        setTeacherPhone("");
+        setRegisterTeacher(false);
         adminAPI.classes.list(id).then((r) => setClasses(r.data || []));
+        success("Class created successfully!");
       })
-      .catch((err) => setError(err.response?.data?.error || "Failed"))
+      .catch((err) => {
+        const errorMessage = err.response?.data?.error || "Failed to create class";
+        setError(errorMessage);
+        showError(errorMessage);
+      })
       .finally(() => setLoading(false));
   };
 
@@ -42,7 +87,7 @@ export default function AdminDeptDetail() {
   return (
     <AdminMobileShell
       title={`${dept.name}`}
-      subtitle={`${dept.hod || "Pending"} (HOD)`}
+      subtitle={`${dept.hod?.name || "Pending"} (HOD)`}
       headerColor="bg-gradient-to-r from-blue-600 to-indigo-700"
       backTo="/admin/departments"
     >
@@ -61,7 +106,67 @@ export default function AdminDeptDetail() {
             value={className}
             onChange={(e) => setClassName(e.target.value)}
             className="input-base"
+            disabled={loading}
           />
+          <input
+            type="text"
+            className="input-base"
+            placeholder="Year (e.g., 3rd Year)"
+            value={year}
+            onChange={(e) => setYear(e.target.value)}
+            disabled={loading}
+          />
+          
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="registerTeacher"
+              checked={registerTeacher}
+              onChange={(e) => setRegisterTeacher(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="registerTeacher" className="text-sm font-medium text-gray-700">
+              Register Teacher for this class
+            </label>
+          </div>
+
+          {registerTeacher && (
+            <>
+              <input
+                type="text"
+                placeholder="Teacher Name (optional)"
+                value={teacherName}
+                onChange={(e) => setTeacherName(e.target.value)}
+                className="input-base"
+                disabled={loading}
+              />
+              <input
+                type="email"
+                placeholder="Teacher Email (required)"
+                value={teacherEmail}
+                onChange={(e) => setTeacherEmail(e.target.value)}
+                className="input-base"
+                disabled={loading}
+              />
+              <input
+                type="password"
+                placeholder="Teacher Password (required)"
+                value={teacherPassword}
+                onChange={(e) => setTeacherPassword(e.target.value)}
+                className="input-base"
+                disabled={loading}
+              />
+              <input
+                type="tel"
+                placeholder="Teacher Phone (optional)"
+                value={teacherPhone}
+                onChange={(e) => setTeacherPhone(e.target.value)}
+                className="input-base"
+                disabled={loading}
+              />
+            </>
+          )}
+          
           <button onClick={handleCreateClass} disabled={loading} className="btn-primary w-full">
             {loading ? "Creating..." : "Create Class"}
           </button>
@@ -82,6 +187,12 @@ export default function AdminDeptDetail() {
             >
               <p className="font-semibold text-gray-900">{c.name}</p>
               <p className="text-sm text-gray-600 mt-1">{c.year || "—"}</p>
+              <p className="text-sm text-gray-600 mt-1">
+                Teacher: {c.classTeacher?.name || "Pending"}
+              </p>
+              {c.classTeacher?.email && (
+                <p className="text-xs text-gray-500 mt-1">{c.classTeacher.email}</p>
+              )}
             </button>
           ))}
         </div>

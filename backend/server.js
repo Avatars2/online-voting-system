@@ -11,6 +11,8 @@ import authRoutes from "./routes/auth.js";
 import adminRoutes from "./routes/admin.js";
 import studentRoutes from "./routes/student.js";
 import noticeRoutes from "./routes/notice.js";
+import hodRoutes from "./routes/hod.js";
+import teacherRoutes from "./routes/teacher.js";
 
 // Get __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -65,6 +67,8 @@ dotenv.config();
   app.use("/api/admin", adminRoutes);
   app.use("/api/student", studentRoutes);
   app.use("/api/notices", noticeRoutes);
+  app.use("/api/hod", hodRoutes);
+  app.use("/api/teacher", teacherRoutes);
 
   // File upload route for notices
   app.post("/api/notices/upload", upload.single('pdf'), (req, res) => {

@@ -2,11 +2,12 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { adminAPI } from "../../services/api";
 import AdminMobileShell from "../../components/AdminMobileShell";
+import { useToast } from "../../components/UI/Toast";
 
 export default function DepartmentPage() {
   const navigate = useNavigate();
+  const { success, error: showError } = useToast();
   const [name, setName] = useState("");
-  const [hod, setHod] = useState("");
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -21,17 +22,33 @@ export default function DepartmentPage() {
       setError("Department name is required");
       return;
     }
+
     setLoading(true);
     setError("");
+    
+    const payload = { name: name.trim() };
+    
     adminAPI.departments
-      .create({ name: name.trim(), hod: hod.trim() || undefined })
-      .then(() => {
+      .create(payload)
+      .then((response) => {
+        console.log("Department creation response:", response);
+        const deptName = name.trim();
         setName("");
-        setHod("");
         fetch();
+        success(`Department "${deptName}" created successfully!`);
       })
-      .catch((err) => setError(err.response?.data?.error || "Failed"))
+      .catch((err) => {
+        console.error("Department creation error:", err);
+        console.error("Error response:", err.response);
+        const errorMessage = err.response?.data?.error || "Failed to create department";
+        setError(errorMessage);
+        showError(errorMessage);
+      })
       .finally(() => setLoading(false));
+  };
+
+  const handleRegisterHod = () => {
+    navigate("/hod/register");
   };
 
   return (
@@ -51,18 +68,13 @@ export default function DepartmentPage() {
         <div className="space-y-3">
           <input
             type="text"
-            placeholder="Dept Name (e.g. Computer Science)"
+            placeholder="Department Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="input-base"
+            disabled={loading}
           />
-          <input
-            type="text"
-            placeholder="HOD Name (optional)"
-            value={hod}
-            onChange={(e) => setHod(e.target.value)}
-            className="input-base"
-          />
+          
           <button onClick={handleCreate} disabled={loading} className="btn-primary w-full">
             {loading ? "Creating..." : "Create Department"}
           </button>
@@ -76,16 +88,44 @@ export default function DepartmentPage() {
         </div>
         <div className="space-y-2">
           {departments.map((d) => (
-            <button
-              key={d._id}
-              onClick={() => navigate(`/admin/departments/${d._id}`)}
-              className="w-full p-4 bg-white border rounded-xl text-left hover:border-blue-300 hover:bg-blue-50 transition"
-            >
-              <p className="font-semibold text-gray-900">{d.name}</p>
-              <p className="text-sm text-gray-600 mt-1">HOD: {d.hod || "Pending"}</p>
-            </button>
+            <div key={d._id} className="bg-white border rounded-xl p-4">
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-900">{d.name}</p>
+                  <div className="mt-2">
+                    <p className="text-sm text-gray-600">
+                      HOD: <span className="font-medium text-gray-900">
+                        {d.hod?.name || "Not assigned"}
+                      </span>
+                    </p>
+                    {d.hod?.email && (
+                      <p className="text-xs text-gray-500 mt-1">{d.hod.email}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => navigate(`/admin/departments/${d._id}`)}
+                    className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-200 transition"
+                  >
+                    Manage
+                  </button>
+                </div>
+              </div>
+            </div>
           ))}
         </div>
+        
+        {departments.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <button
+              onClick={handleRegisterHod}
+              className="w-full p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 font-medium hover:bg-green-100 transition"
+            >
+              Register New HOD
+            </button>
+          </div>
+        )}
       </div>
     </AdminMobileShell>
   );

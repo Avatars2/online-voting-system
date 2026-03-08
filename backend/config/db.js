@@ -3,6 +3,12 @@ import dotenv from "dotenv";
 dotenv.config();
 
 let MONGO_URI = process.env.MONGO_URI;
+
+if (!MONGO_URI) {
+  console.error("❌ MONGO_URI environment variable is not set");
+  process.exit(1);
+}
+
 if (MONGO_URI.includes("mongodb.net") && !MONGO_URI.match(/mongodb\.net\/[^/?]+/)) {
   MONGO_URI = MONGO_URI.replace(/\/\?/, "/ovs?");
 }

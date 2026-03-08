@@ -53,10 +53,16 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          router: ['react-router-dom'],
-          api: ['axios']
+        manualChunks: (id) => {
+          if (id.includes('react') || id.includes('react-dom')) {
+            return 'vendor';
+          }
+          if (id.includes('react-router-dom')) {
+            return 'router';
+          }
+          if (id.includes('axios')) {
+            return 'api';
+          }
         }
       }
     },
@@ -69,7 +75,7 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:5001',
         changeOrigin: true,
       },
     },
