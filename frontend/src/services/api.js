@@ -48,9 +48,21 @@ export const authAPI = {
 };
 
 export const adminAPI = {
-  stats: () => api.get("/admin/stats"),
-  departments: { list: () => api.get("/admin/departments"), create: (d) => api.post("/admin/departments", d) },
-  classes: { list: (deptId) => api.get("/admin/classes", { params: deptId ? { department: deptId } : {} }), create: (d) => api.post("/admin/classes", d) },
+  // Auth
+  registerHOD: (hodData) => api.post("/admin/register-hod", hodData),
+  
+  // Dashboard
+  getDashboardStats: () => api.get("/admin/stats"),
+  departments: { 
+    list: () => api.get("/admin/departments"), 
+    create: (d) => api.post("/admin/departments", d),
+    delete: (id) => api.delete(`/admin/departments/${id}`)
+  },
+  classes: { 
+    list: (deptId) => api.get("/admin/classes", { params: deptId ? { department: deptId } : {} }), 
+    create: (d) => api.post("/admin/classes", d),
+    delete: (id) => api.delete(`/admin/classes/${id}`)
+  },
   notices: { list: () => api.get("/admin/notices"), create: (d) => api.post("/admin/notices", d) },
   elections: { list: () => api.get("/admin/elections"), create: (d) => api.post("/admin/elections", d) },
   addCandidate: (electionId, d) => api.post(`/admin/elections/${electionId}/candidates`, d),
@@ -60,6 +72,10 @@ export const adminAPI = {
     create: (d) => api.post("/admin/students", d),
     update: (id, d) => api.put(`/admin/students/${id}`, d),
     delete: (id) => api.delete(`/admin/students/${id}`)
+  },
+  teachers: {
+    list: () => api.get("/admin/teachers"),
+    register: (data) => api.post("/admin/register-teacher", data)
   },
   getDepartment: (id) => api.get(`/admin/departments/${id}`),
   getClass: (id) => api.get(`/admin/classes/${id}`),
@@ -88,13 +104,111 @@ export const adminAPI = {
   registerHodForDepartment: (deptId, hodData) => api.post(`/admin/departments/${deptId}/register-hod`, hodData),
 };
 
+export const hodAPI = {
+  // Auth
+  login: (email, password) => api.post("/auth/login", { email, password }),
+  logout: () => api.post("/auth/logout"),
+  verifyToken: () => api.get("/auth/verify"),
+  changePassword: (oldPassword, newPassword) =>
+    api.post("/auth/change-password", { oldPassword, newPassword }),
+  updateMe: (payload) => api.put("/auth/me", payload),
+  
+  // Dashboard
+  getDashboard: () => api.get("/hod/dashboard"),
+  
+  // Department
+  getDepartment: () => api.get("/hod/department"),
+  
+  // Classes
+  classes: {
+    list: () => api.get("/hod/classes"),
+    create: (data) => api.post("/hod/classes", data),
+    delete: (id) => api.delete(`/hod/classes/${id}`)
+  },
+  
+  // Teachers
+  teachers: {
+    list: () => api.get("/hod/teachers"),
+    register: (data) => api.post("/hod/register-teacher", data)
+  },
+  
+  // Students
+  students: {
+    register: (data) => api.post("/hod/register-student", data),
+    list: () => api.get("/hod/students"),
+    delete: (id) => api.delete(`/hod/students/${id}`)
+  },
+  
+  // Notices
+  notices: {
+    list: () => api.get("/hod/notices"),
+    create: (data) => api.post("/hod/notices", data)
+  },
+  
+  // Elections
+  elections: {
+    list: () => api.get("/hod/elections"),
+    create: (data) => api.post("/hod/elections", data),
+    addCandidate: (electionId, data) => api.post(`/hod/elections/${electionId}/candidates`, data)
+  },
+  
+  // Results
+  results: (electionId) => api.get(`/hod/results/${electionId}`)
+};
+
 export const studentAPI = {
   me: () => api.get("/student/me"),
   elections: () => api.get("/student/elections"),
   getElectionCandidates: (electionId) => api.get(`/student/elections/${electionId}/candidates`),
   vote: (electionId, candidateId) => api.post(`/student/vote/${electionId}/${candidateId}`),
+  notices: () => api.get("/student/notices")
 };
 
-export const noticesAPI = { list: () => api.get("/notices") };
+export const teacherAPI = {
+  // Auth
+  login: (email, password) => api.post("/auth/login", { email, password }),
+  logout: () => api.post("/auth/logout"),
+  verifyToken: () => api.get("/auth/verify"),
+  changePassword: (oldPassword, newPassword) =>
+    api.post("/auth/change-password", { oldPassword, newPassword }),
+  updateMe: (payload) => api.put("/auth/me", payload),
+  
+  // Dashboard
+  getDashboard: () => api.get("/teacher/dashboard"),
+  
+  // Profile
+  profile: () => api.get("/teacher/profile"),
+  
+  // Class
+  getClass: (id) => api.get(`/admin/classes/${id}`),
+  
+  // Students
+  students: {
+    list: (classId) => api.get(`/teacher/students${classId ? `?class=${classId}` : ''}`),
+    create: (data) => api.post("/teacher/register-student", data),
+    update: (id, data) => api.put(`/admin/students/${id}`, data),
+    delete: (id) => api.delete(`/admin/students/${id}`)
+  },
+  
+  // Notices
+  notices: {
+    list: () => api.get("/teacher/notices"),
+    create: (data) => api.post("/teacher/notices", data)
+  },
+  
+  // Elections
+  elections: {
+    list: () => api.get("/teacher/elections"),
+    create: (data) => api.post("/teacher/elections", data),
+    addCandidate: (electionId, data) => api.post(`/teacher/elections/${electionId}/candidates`, data)
+  },
+  
+  // Results
+  results: (electionId) => api.get(`/teacher/results/${electionId}`)
+};
+
+export const noticesAPI = { 
+  list: () => api.get("/notices") 
+};
 
 export default api;

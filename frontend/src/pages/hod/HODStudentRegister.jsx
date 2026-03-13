@@ -1,116 +1,84 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { authAPI, adminAPI } from "../../services/api";
+import { authAPI, hodAPI } from "../../services/api";
 import AdminMobileShell from "../../components/AdminMobileShell";
+import EnhancedInput from "../../components/UI/EnhancedInput";
+import EnhancedButton from "../../components/UI/EnhancedButton";
+import { useToast } from "../../components/UI/Toast";
 
 export default function HODStudentRegister() {
   const navigate = useNavigate();
+  const { success, error: showError } = useToast();
   const [user, setUser] = useState(null);
+  const [department, setDepartment] = useState(null);
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [formData, setFormData] = useState({
     name: "",
+    enrollmentId: "",
     email: "",
-    password: "",
     phone: "",
+    tempPassword: "",
     class: "",
-    year: ""
   });
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Get current user info
         const userResponse = await authAPI.verifyToken();
         setUser(userResponse.data);
 
-        // Get classes for HOD's department
-        if (userResponse.data.assignedDepartment) {
-          const classesResponse = await adminAPI.classes.list(userResponse.data.assignedDepartment);
-          setClasses(classesResponse.data || []);
+        // Get HOD's department
+        const deptResponse = await hodAPI.getDepartment();
+        const deptData = deptResponse.data;
+        if (deptData && deptData.length > 0) {
+          setDepartment(deptData[0]);
         }
+
+        // Get classes for HOD's department
+        const classesResponse = await hodAPI.classes.list();
+        setClasses(classesResponse.data || []);
       } catch (err) {
-        setError(err.response?.data?.error || "Failed to load data");
+        console.error("Failed to fetch data:", err);
       }
     };
-
     fetchData();
   }, []);
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
-  };
-
-  const validateForm = () => {
-    if (!formData.name.trim()) {
-      setError("Student name is required");
-      return false;
-    }
-    if (!formData.email.trim()) {
-      setError("Email is required");
-      return false;
-    }
-    if (!formData.email.includes("@")) {
-      setError("Please enter a valid email address");
-      return false;
-    }
-    if (!formData.password) {
-      setError("Password is required");
-      return false;
-    }
-    if (formData.password.length < 6) {
-      setError("Password must be at least 6 characters long");
-      return false;
-    }
-    if (!formData.class) {
-      setError("Please select a class");
-      return false;
-    }
-    return true;
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
-    setSuccess("");
-
-    if (!validateForm()) return;
+    setLoading(true);
 
     try {
-      setLoading(true);
-      
-      const studentData = {
+      const payload = {
         name: formData.name.trim(),
-        email: formData.email.trim().toLowerCase(),
-        password: formData.password,
-        phone: formData.phone.trim(),
-        class: formData.class,
-        department: user.assignedDepartment,
-        year: formData.year.trim() || undefined
+        email: formData.email.trim(),
+        tempPassword: formData.tempPassword,
+        phone: formData.phone.trim() || undefined,
+        enrollmentId: formData.enrollmentId.trim() || undefined,
+        class: formData.class || undefined,
       };
 
-      await adminAPI.students.create(studentData);
-
-      setSuccess("Student registered successfully!");
+      await hodAPI.students.register(payload);
+      
+      // Reset form
       setFormData({
         name: "",
+        enrollmentId: "",
         email: "",
-        password: "",
         phone: "",
+        tempPassword: "",
         class: "",
-        year: ""
       });
 
-      setTimeout(() => {
-        navigate("/hod/dashboard");
-      }, 2000);
+      success("Student registered successfully!");
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to register student");
+      showError(err.response?.data?.error || "Failed to register student");
     } finally {
       setLoading(false);
     }
@@ -118,11 +86,7 @@ export default function HODStudentRegister() {
 
   if (!user) {
     return (
-      <AdminMobileShell
-        title="Register Student"
-        subtitle="Add new student to department"
-        headerColor="bg-gradient-to-r from-green-600 to-teal-700"
-      >
+      <AdminMobileShell title="Register Student" subtitle="Add new student to department">
         <div className="flex items-center justify-center h-64">
           <div className="text-gray-600">Loading...</div>
         </div>
@@ -134,96 +98,83 @@ export default function HODStudentRegister() {
     <AdminMobileShell
       title="Register Student"
       subtitle="Add new student to department"
-      headerColor="bg-gradient-to-r from-green-600 to-teal-700"
+      backTo="/hod/dashboard"
     >
-      {error && (
-        <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm border border-red-200 mb-4">
-          {error}
-        </div>
-      )}
-
-      {success && (
-        <div className="p-3 bg-green-50 text-green-700 rounded-xl text-sm border border-green-200 mb-4">
-          {success}
-        </div>
-      )}
-
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Student Name *
-            </label>
-            <input
+            <label className="block text-sm font-medium text-gray-700 mb-2">Student Name</label>
+            <EnhancedInput
               type="text"
+              placeholder="Enter student name"
               name="name"
               value={formData.name}
               onChange={handleChange}
-              className="input-base"
-              placeholder="Enter student's full name"
+              disabled={loading}
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email Address *
-            </label>
-            <input
+            <label className="block text-sm font-medium text-gray-700 mb-2">Enrollment ID</label>
+            <EnhancedInput
+              type="text"
+              placeholder="Enter enrollment ID"
+              name="enrollmentId"
+              value={formData.enrollmentId}
+              onChange={handleChange}
+              disabled={loading}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+            <EnhancedInput
               type="email"
+              placeholder="Enter email address"
               name="email"
               value={formData.email}
               onChange={handleChange}
-              className="input-base"
-              placeholder="Enter student's email"
+              disabled={loading}
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Password *
-            </label>
-            <input
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              className="input-base"
-              placeholder="Enter password for student"
-              required
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Password must be at least 6 characters long
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Phone Number
-            </label>
-            <input
+            <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+            <EnhancedInput
               type="tel"
+              placeholder="Enter phone number"
               name="phone"
               value={formData.phone}
               onChange={handleChange}
-              className="input-base"
-              placeholder="Enter phone number (optional)"
+              disabled={loading}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Class *
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Temporary Password</label>
+            <EnhancedInput
+              type="password"
+              placeholder="Enter temporary password"
+              name="tempPassword"
+              value={formData.tempPassword}
+              onChange={handleChange}
+              disabled={loading}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Class</label>
             <select
+              className="input-base"
               name="class"
               value={formData.class}
               onChange={handleChange}
-              className="input-base"
-              required
+              disabled={loading}
             >
-              <option value="">Select a class</option>
+              <option value="">Select Class</option>
               {classes.map((cls) => (
                 <option key={cls._id} value={cls._id}>
                   {cls.name} {cls.year ? `- ${cls.year}` : ""}
@@ -232,37 +183,16 @@ export default function HODStudentRegister() {
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Year
-            </label>
-            <input
-              type="text"
-              name="year"
-              value={formData.year}
-              onChange={handleChange}
-              className="input-base"
-              placeholder="e.g., 1st Year, 2nd Year"
-            />
-          </div>
-
-          <div className="pt-4 space-y-3">
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn-primary w-full"
-            >
-              {loading ? "Registering..." : "Register Student"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => navigate("/hod/dashboard")}
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-gray-100 transition"
-            >
-              Back to Dashboard
-            </button>
-          </div>
+          <EnhancedButton
+            type="submit"
+            disabled={loading}
+            loading={loading}
+            variant="primary"
+            size="lg"
+            className="w-full"
+          >
+            {loading ? "Registering..." : "Register Student"}
+          </EnhancedButton>
         </form>
       </div>
     </AdminMobileShell>

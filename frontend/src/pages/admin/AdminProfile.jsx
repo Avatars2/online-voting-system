@@ -178,24 +178,7 @@ export default function AdminProfile(){
             </div>
           </div>
 
-          <div>
-            <div className="text-xs font-bold text-gray-500 uppercase mb-3">Quick Settings</div>
-            <div className="grid grid-cols-3 gap-3">
-              <a href="/admin/reset-password" className="bg-white border rounded-xl p-3 text-center hover:bg-gray-50">
-                <div className="text-xl">🔒</div>
-                <div className="text-xs font-semibold text-gray-700 mt-1">Security</div>
-              </a>
-              <a href="/admin/notices" className="bg-white border rounded-xl p-3 text-center hover:bg-gray-50">
-                <div className="text-xl">🔔</div>
-                <div className="text-xs font-semibold text-gray-700 mt-1">Alerts</div>
-              </a>
-              <a href="/" className="bg-white border rounded-xl p-3 text-center hover:bg-gray-50">
-                <div className="text-xl">🚪</div>
-                <div className="text-xs font-semibold text-gray-700 mt-1">Logout</div>
-              </a>
-            </div>
           </div>
-        </div>
       </div>
     </AdminMobileShell>
   )

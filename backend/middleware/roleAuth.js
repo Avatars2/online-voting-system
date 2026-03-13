@@ -35,7 +35,7 @@ export const departmentAccess = async (req, res, next) => {
   try {
     // For HODs, check if they have access to the requested department
     if (req.user.role === 'hod') {
-      const requestedDeptId = req.params.departmentId || req.body.departmentId;
+      const requestedDeptId = req.params.departmentId || req.body.departmentId || req.body.department;
       if (requestedDeptId && requestedDeptId !== req.user.assignedDepartment.toString()) {
         return res.status(403).json({ error: 'Access denied. You can only access your assigned department.' });
       }
@@ -50,7 +50,7 @@ export const classAccess = async (req, res, next) => {
   try {
     // For Teachers, check if they have access to the requested class
     if (req.user.role === 'teacher') {
-      const requestedClassId = req.params.classId || req.body.classId;
+      const requestedClassId = req.params.classId || req.params.id || req.body.classId || req.body.class || req.query.class;
       if (requestedClassId && requestedClassId !== req.user.assignedClass.toString()) {
         return res.status(403).json({ error: 'Access denied. You can only access your assigned class.' });
       }

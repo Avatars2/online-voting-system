@@ -27,7 +27,8 @@ export const registerHOD = async (req, res) => {
       password,
       phone,
       role: 'hod',
-      assignedDepartment: departmentId
+      department: departmentId,        // Where HOD was registered
+      assignedDepartment: departmentId // Where HOD is assigned (same for now)
     });
 
     await hod.save();
@@ -43,8 +44,9 @@ export const registerHOD = async (req, res) => {
         name: hod.name,
         email: hod.email,
         role: hod.role,
-        assignedDepartment: departmentId,
-        department: department.name
+        department: departmentId,        // Where HOD was registered
+        assignedDepartment: departmentId, // Where HOD is assigned
+        departmentName: department.name
       }
     });
   } catch (error) {
@@ -185,6 +187,143 @@ export const getAllHODs = async (req, res) => {
 };
 
 // Get all Teachers (admin and HOD)
+// Register Student (by HOD or Teacher)
+export const registerStudent = async (req, res) => {
+  try {
+    const { name, enrollmentId, email, phone, tempPassword, class: classId } = req.body || {};
+    console.log("HOD/Teacher registerStudent API - input:", { name, enrollmentId, email, class: classId, userRole: req.user?.role });
+    
+    if (!name || !email || !tempPassword) {
+      return res.status(400).json({ error: "name, email and tempPassword are required" });
+    }
+
+    // Password validation
+    if (!tempPassword || tempPassword.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    // Check if user already exists
+    const existing = await User.findOne({ email: normalizedEmail });
+    if (existing) {
+      if (existing.role === "admin" || existing.is_admin === true) {
+        return res.status(409).json({ error: "This email is already used by admin account" });
+      }
+      return res.status(409).json({ error: "Student with this email already exists" });
+    }
+
+    // Check enrollment ID uniqueness
+    if (enrollmentId) {
+      const existingId = await User.findOne({ studentId: String(enrollmentId).trim() });
+      if (existingId) return res.status(409).json({ error: "Enrollment ID already registered" });
+    }
+
+    // Get department and class info
+    let departmentId, departmentObj;
+    if (req.user.role === 'hod') {
+      departmentId = req.user.assignedDepartment;
+      departmentObj = await Department.findById(departmentId);
+    } else if (req.user.role === 'teacher') {
+      // Teacher can only register students for their assigned class
+      if (!classId || classId !== req.user.assignedClass.toString()) {
+        return res.status(403).json({ error: 'Teachers can only register students for their assigned class' });
+      }
+      const classObj = await Class.findById(classId).populate('department');
+      if (!classObj) {
+        return res.status(404).json({ error: 'Class not found' });
+      }
+      departmentId = classObj.department._id;
+      departmentObj = classObj.department;
+    }
+
+    const user = await User.create({
+      name: String(name).trim(),
+      email: normalizedEmail,
+      studentId: enrollmentId ? String(enrollmentId).trim() : undefined,
+      password: tempPassword,
+      phone: phone ? String(phone).trim() : undefined,
+      department: departmentId,
+      class: classId || undefined,
+      role: "student",
+      is_admin: false,
+    });
+    
+    console.log("HOD/Teacher registerStudent API - created new student:", { _id: user._id, class: user.class, department: user.department });
+    const { password: _, ...safe } = user.toObject();
+    
+    res.status(201).json({
+      message: 'Student registered successfully',
+      student: {
+        ...safe,
+        departmentName: departmentObj?.name,
+        className: (await Class.findById(classId))?.name
+      }
+    });
+  } catch (error) {
+    console.error("HOD/Teacher registerStudent error:", error);
+    if (error?.name === "ValidationError") {
+      const messages = Object.values(error.errors || {}).map((e) => e.message);
+      const msg = messages[0] || "Invalid data";
+      return res.status(400).json({ error: msg });
+    }
+    if (error?.code === 11000) {
+      const pattern = error.keyPattern || {};
+      if (pattern.email) {
+        return res.status(409).json({ error: "Email already registered" });
+      }
+      if (pattern.studentId) {
+        return res.status(409).json({ error: "Enrollment ID already registered" });
+      }
+      return res.status(409).json({ error: "Duplicate field value already exists" });
+    }
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Get students list (for HOD and Teacher)
+export const getStudents = async (req, res) => {
+  try {
+    const filter = { role: "student" };
+    
+    console.log("getStudents API - user:", {
+      role: req.user?.role,
+      assignedClass: req.user?.assignedClass,
+      assignedDepartment: req.user?.assignedDepartment,
+      queryClass: req.query.class
+    });
+    
+    if (req.user.role === 'hod') {
+      // HOD can see all students in their department
+      filter.department = req.user.assignedDepartment;
+    } else if (req.user.role === 'teacher') {
+      // Teacher can only see students in their assigned class
+      filter.class = req.user.assignedClass;
+      console.log("Teacher using assigned class:", req.user.assignedClass);
+    }
+
+    // Additional filters from query params
+    if (req.query.department && req.user.role === 'admin') {
+      filter.department = req.query.department;
+    }
+    if (req.query.class && req.user.role !== 'teacher') {
+      filter.class = req.query.class;
+    }
+
+    console.log("HOD/Teacher getStudents API - filter:", filter);
+    
+    const items = await User.find(filter)
+      .select("-password")
+      .populate("department class");
+    
+    console.log("HOD/Teacher getStudents API - found students:", items.length);
+    res.json(items);
+  } catch (error) {
+    console.error("HOD/Teacher getStudents error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export const getAllTeachers = async (req, res) => {
   try {
     let query = { role: 'teacher' };

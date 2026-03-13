@@ -16,7 +16,7 @@ export default function AdminDashboard() {
     const fetchData = async () => {
       try {
         const [statsRes, electionsRes] = await Promise.all([
-          adminAPI.stats(),
+          adminAPI.getDashboardStats(),
           adminAPI.elections.list()
         ]);
         

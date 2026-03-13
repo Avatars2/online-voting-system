@@ -1,250 +1,240 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { authAPI, adminAPI } from "../../services/api";
+import { authAPI, teacherAPI, adminAPI } from "../../services/api";
 import AdminMobileShell from "../../components/AdminMobileShell";
 import { useToast } from "../../components/UI/Toast";
 
 export default function TeacherNoticePage() {
-  const navigate = useNavigate();
-  const { success: showSuccess, error: showError } = useToast();
-  const [user, setUser] = useState(null);
-  const [classData, setClassData] = useState(null);
+  const { success, error: showError } = useToast();
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [pdfFile, setPdfFile] = useState(null);
+  const [pdfUrl, setPdfUrl] = useState("");
+  const [uploading, setUploading] = useState(false);
   const [notices, setNotices] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  const [showCreateNotice, setShowCreateNotice] = useState(false);
+  const [user, setUser] = useState(null);
+  const [classData, setClassData] = useState(null);
 
-  // Form data for creating notice
-  const [noticeFormData, setNoticeFormData] = useState({
-    title: "",
-    message: "",
-    type: "general"
-  });
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const userResponse = await authAPI.verifyToken();
-        setUser(userResponse.data);
-
-        if (userResponse.data.assignedClass) {
-          const [classResponse, noticesResponse] = await Promise.all([
-            adminAPI.getClass(userResponse.data.assignedClass),
-            adminAPI.notices.list()
-          ]);
-          setClassData(classResponse.data);
-          
-          // Filter notices for this teacher's class
-          const classNotices = (noticesResponse.data || []).filter(
-            notice => notice.class === classResponse.data._id
-          );
-          setNotices(classNotices);
-        }
-      } catch (err) {
-        setError(err.response?.data?.error || "Failed to load data");
-      }
-    };
-
-    fetchData();
-  }, []);
-
-  const handleCreateNotice = async (e) => {
-    e.preventDefault();
-    setError("");
-    setSuccessMessage("");
-
-    if (!noticeFormData.title.trim()) {
-      setError("Notice title is required");
-      return;
-    }
-    if (!noticeFormData.message.trim()) {
-      setError("Notice message is required");
-      return;
-    }
-
+  const fetchNotices = async () => {
     try {
       setLoading(true);
+      setError("");
       
-      const noticeData = {
-        title: noticeFormData.title.trim(),
-        message: noticeFormData.message.trim(),
-        type: noticeFormData.type,
-        class: classData._id,
-        department: classData.department._id,
-        createdBy: user._id
-      };
+      const userResponse = await authAPI.verifyToken();
+      setUser(userResponse.data);
 
-      await adminAPI.notices.create(noticeData);
-
-      setSuccessMessage("Notice created successfully!");
-      showSuccess("Notice created successfully!");
-      setNoticeFormData({
-        title: "",
-        message: "",
-        type: "general"
-      });
-      setShowCreateNotice(false);
-      
-      // Refresh notices list
-      const noticesResponse = await adminAPI.notices.list();
-      const classNotices = (noticesResponse.data || []).filter(
-        notice => notice.class === classData._id
-      );
-      setNotices(classNotices);
+      if (userResponse.data?.assignedClass) {
+        // Get class data using adminAPI since teacherAPI.getClass doesn't exist
+        const [classResponse, noticesResponse] = await Promise.all([
+          adminAPI.getClass(userResponse.data.assignedClass),
+          teacherAPI.notices.list()
+        ]);
+        
+        if (classResponse.data) {
+          setClassData(classResponse.data);
+          
+          // Notices are already filtered by backend for teacher's class
+          // No need to filter on frontend
+          setNotices(noticesResponse.data || []);
+        } else {
+          setError("Class information not found");
+        }
+      } else {
+        setError("No class assigned to teacher");
+      }
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to create notice");
-      showError(err.response?.data?.error || "Failed to create notice");
+      console.error("Failed to fetch notices:", err);
+      setError(err.response?.data?.error || "Failed to load notices");
+      setNotices([]);
     } finally {
       setLoading(false);
     }
   };
 
-  if (!classData) {
-    return (
-      <AdminMobileShell title="Class Notices" subtitle="Manage Notices">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-gray-600">Loading...</div>
-        </div>
-      </AdminMobileShell>
-    );
-  }
+  useEffect(() => fetchNotices(), []);
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (file.type !== 'application/pdf') {
+      setError("Only PDF files are allowed");
+      return;
+    }
+    
+    if (file.size > 10 * 1024 * 1024) {
+      setError("File size must be less than 10MB");
+      return;
+    }
+
+    setPdfFile(file);
+    setError("");
+    
+    // Upload the file
+    const formData = new FormData();
+    formData.append('pdf', file);
+    
+    setUploading(true);
+    try {
+      const response = await fetch('http://localhost:5001/api/notices/upload', {
+        method: 'POST',
+        body: formData
+      });
+      
+      const data = await response.json();
+      if (response.ok) {
+        setPdfUrl(data.url);
+        setError("");
+      } else {
+        setError(data.error || "Upload failed");
+      }
+    } catch (err) {
+      setError("Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!title.trim()) {
+      setError("Notice title is required");
+      return;
+    }
+    
+    setLoading(true);
+    setError("");
+    try {
+      const noticeData = {
+        title: title.trim(), 
+        body: body.trim(),
+        attachment: pdfUrl
+      };
+      
+      await teacherAPI.notices.create(noticeData);
+      
+      setTitle("");
+      setBody("");
+      setPdfFile(null);
+      setPdfUrl("");
+      fetchNotices();
+      success("Notice published successfully!");
+    } catch (err) {
+      setError(err.response?.data?.error || "Failed to publish");
+      showError(err.response?.data?.error || "Failed to publish");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatTime = (d) => {
+    if (!d) return "";
+    const diff = (Date.now() - new Date(d)) / 3600000;
+    if (diff < 1) return `${Math.round(diff * 60)}m ago`;
+    if (diff < 24) return `${Math.round(diff)}h ago`;
+    return `${Math.round(diff / 24)}d ago`;
+  };
 
   return (
-    <AdminMobileShell title="Class Notices" subtitle={`${classData.name} Notices`}>
+    <AdminMobileShell
+      title="Notice Board"
+      subtitle={classData ? `Broadcast to ${classData.name} students` : "Broadcast to your class students"}
+      headerColor="bg-gradient-to-r from-purple-600 to-pink-600"
+    >
       {error && (
         <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm border border-red-200">
           {error}
         </div>
       )}
 
-      {successMessage && (
-        <div className="p-3 bg-green-50 text-green-700 rounded-xl text-sm border border-green-200">
-          {successMessage}
-        </div>
-      )}
-
-      {/* Class Info */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
-        <div className="font-bold text-gray-900 mb-3">Class Information</div>
-        <div className="space-y-2">
-          <div className="flex justify-between">
-            <span className="text-sm text-gray-600">Class:</span>
-            <span className="text-sm font-medium">{classData.name}</span>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <div className="font-bold text-gray-900 mb-3">Draft New Notice</div>
+        <div className="space-y-3">
+          <input
+            type="text"
+            placeholder="Notice Title (e.g. Class Test Alert)"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="input-base"
+          />
+          <textarea
+            placeholder="Write your message here..."
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={4}
+            className="input-base h-28 resize-none"
+          />
+          
+          <div className="border-2 border-dashed border-gray-300 rounded-xl p-4">
+            <label className="block">
+              <div className="text-center">
+                <div className="text-2xl mb-2">📄</div>
+                <div className="text-sm text-gray-600 mb-2">
+                  {uploading ? "Uploading..." : pdfFile ? pdfFile.name : "Click to upload PDF (optional)"}
+                </div>
+                <div className="text-xs text-gray-500">Max size: 10MB</div>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={handleFileChange}
+                  disabled={uploading}
+                  className="hidden"
+                />
+              </div>
+            </label>
           </div>
-          {classData.year && (
-            <div className="flex justify-between">
-              <span className="text-sm text-gray-600">Year:</span>
-              <span className="text-sm font-medium">{classData.year}</span>
+          
+          {pdfUrl && (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-xl">
+              <p className="text-sm text-green-700">✅ PDF uploaded successfully</p>
+              <p className="text-xs text-green-600 mt-1">File will be attached to notice</p>
             </div>
           )}
-          <div className="flex justify-between">
-            <span className="text-sm text-gray-600">Department:</span>
-            <span className="text-sm font-medium">{classData.department?.name}</span>
-          </div>
+          
+          <button onClick={handlePublish} disabled={loading || uploading} className="btn-primary w-full">
+            {loading ? "Publishing..." : uploading ? "Uploading..." : `Publish to ${classData?.name || "Class"}`}
+          </button>
         </div>
       </div>
 
-      {/* Create Notice Button */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
-        <button
-          onClick={() => setShowCreateNotice(true)}
-          className="btn-primary w-full"
-        >
-          Create New Notice
-        </button>
-      </div>
-
-      {/* Notices List */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
         <div className="flex justify-between items-center mb-3">
           <div className="font-bold text-gray-900">Class Notices</div>
-          <div className="text-xs font-semibold text-gray-500">{notices.length} TOTAL</div>
+          <span className="px-2 py-1 bg-purple-50 text-purple-700 rounded-full text-xs font-semibold">
+            {notices.length} ACTIVE
+          </span>
         </div>
-        <div className="space-y-2">
-          {notices.length === 0 ? (
-            <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 text-center text-gray-600">
-              No notices created yet
-            </div>
+        <div className="space-y-3">
+          {loading ? (
+            <p className="text-gray-500 text-sm">Loading notices...</p>
+          ) : notices.length === 0 ? (
+            <p className="text-gray-500 text-sm">No notices yet</p>
           ) : (
-            notices.map((notice) => (
-              <div key={notice._id} className="p-4 border rounded-xl bg-white">
-                <div className="font-semibold text-gray-900">{notice.title}</div>
-                <div className="text-sm text-gray-600 mt-1">{notice.message}</div>
-                <div className="text-xs text-gray-500 mt-2">
-                  Created: {new Date(notice.createdAt).toLocaleDateString()}
-                </div>
-                <div className="mt-2">
-                  <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${
-                    notice.type === 'urgent' ? 'bg-red-100 text-red-700' :
-                    notice.type === 'important' ? 'bg-orange-100 text-orange-700' :
-                    'bg-blue-100 text-blue-700'
-                  }`}>
-                    {notice.type}
-                  </span>
-                </div>
+            notices.map((n) => (
+              <div key={n._id} className="p-4 border rounded-xl bg-gray-50">
+                <h3 className="font-semibold text-gray-900">{n.title}</h3>
+                <p className="text-sm text-gray-600 mt-1">{n.body || ""}</p>
+                {n.attachment && (
+                  <div className="mt-2">
+                    <a 
+                      href={`http://localhost:5001${n.attachment}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    >
+                      📄 {n.attachment.split('/').pop()}
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  </div>
+                )}
+                <p className="text-xs text-gray-400 mt-2">{formatTime(n.createdAt)}</p>
               </div>
             ))
           )}
         </div>
       </div>
-
-      {/* Create Notice Modal */}
-      {showCreateNotice && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-4 w-full max-w-md">
-            <div className="font-bold text-gray-900 mb-3">Create Notice</div>
-            <form onSubmit={handleCreateNotice} className="space-y-3">
-              <input
-                type="text"
-                placeholder="Notice Title"
-                value={noticeFormData.title}
-                onChange={(e) => setNoticeFormData({...noticeFormData, title: e.target.value})}
-                className="input-base"
-                required
-              />
-              <textarea
-                placeholder="Notice Message"
-                value={noticeFormData.message}
-                onChange={(e) => setNoticeFormData({...noticeFormData, message: e.target.value})}
-                className="input-base"
-                rows={4}
-                required
-              />
-              <select
-                value={noticeFormData.type}
-                onChange={(e) => setNoticeFormData({...noticeFormData, type: e.target.value})}
-                className="input-base"
-              >
-                <option value="general">General</option>
-                <option value="important">Important</option>
-                <option value="urgent">Urgent</option>
-              </select>
-              
-              <div className="flex space-x-2">
-                <button type="submit" disabled={loading} className="btn-primary flex-1">
-                  {loading ? "Creating..." : "Create Notice"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCreateNotice(false)}
-                  className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-gray-100 transition"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Back Button */}
-      <button
-        onClick={() => navigate("/teacher/dashboard")}
-        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-gray-100 transition"
-      >
-        Back to Dashboard
-      </button>
     </AdminMobileShell>
   );
 }

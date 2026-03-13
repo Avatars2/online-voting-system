@@ -1,149 +1,234 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { adminAPI } from "../../services/api";
+import { hodAPI } from "../../services/api";
 import AdminMobileShell from "../../components/AdminMobileShell";
 import { useToast } from "../../components/UI/Toast";
 
 export default function HODNoticePage() {
   const navigate = useNavigate();
   const { success, error: showError } = useToast();
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [pdfFile, setPdfFile] = useState(null);
+  const [pdfUrl, setPdfUrl] = useState("");
+  const [uploading, setUploading] = useState(false);
   const [notices, setNotices] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [formData, setFormData] = useState({
-    title: "",
-    message: "",
-    targetAudience: "department" // department or class
-  });
+  const [department, setDepartment] = useState(null);
+
+  const fetchNotices = () => {
+    hodAPI.notices.list()
+      .then((r) => {
+        console.log("HOD notices fetched:", r.data);
+        setNotices(r.data || []);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch HOD notices:", err);
+        setNotices([]);
+      });
+  };
+
+  const fetchDepartment = () => {
+    hodAPI.getDepartment()
+      .then((r) => {
+        console.log("HOD department fetched:", r.data);
+        setDepartment(r.data?.[0] || null);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch HOD department:", err);
+      });
+  };
 
   useEffect(() => {
     fetchNotices();
+    fetchDepartment();
   }, []);
 
-  const fetchNotices = async () => {
-    try {
-      const response = await adminAPI.hod.listNotices();
-      setNotices(response.data || []);
-    } catch (err) {
-      setError(err.response?.data?.error || "Failed to load notices");
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (file.type !== 'application/pdf') {
+      setError("Only PDF files are allowed");
+      return;
     }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!formData.title.trim() || !formData.message.trim()) {
-      setError("Title and message are required");
+    
+    if (file.size > 10 * 1024 * 1024) {
+      setError("File size must be less than 10MB");
       return;
     }
 
+    setPdfFile(file);
+    setError("");
+    
+    // Upload the file
+    const formData = new FormData();
+    formData.append('pdf', file);
+    
+    setUploading(true);
     try {
-      setLoading(true);
-      const noticeData = {
-        title: formData.title.trim(),
-        message: formData.message.trim(),
-        targetAudience: formData.targetAudience
-      };
-
-      await adminAPI.hod.createNotice(noticeData);
-      setFormData({ title: "", message: "", targetAudience: "department" });
-      fetchNotices();
-      success("Notice created successfully!");
+      const response = await fetch('http://localhost:5001/api/notices/upload', {
+        method: 'POST',
+        body: formData
+      });
+      
+      const data = await response.json();
+      if (response.ok) {
+        setPdfUrl(data.url);
+        setError("");
+      } else {
+        setError(data.error || "Upload failed");
+      }
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to create notice");
-      showError(err.response?.data?.error || "Failed to create notice");
+      setError("Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!title.trim()) {
+      setError("Notice title is required");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      await hodAPI.notices.create({ 
+        title: title.trim(), 
+        body: body.trim(),
+        attachment: pdfUrl
+      });
+      setTitle("");
+      setBody("");
+      setPdfFile(null);
+      setPdfUrl("");
+      fetchNotices();
+      success("Notice published successfully!");
+    } catch (err) {
+      setError(err.response?.data?.error || "Failed to publish");
+      showError(err.response?.data?.error || "Failed to publish");
     } finally {
       setLoading(false);
     }
   };
 
-  const formatDate = (d) => {
+  const formatTime = (d) => {
     if (!d) return "";
-    return new Date(d).toLocaleDateString();
+    const diff = (Date.now() - new Date(d)) / 3600000;
+    if (diff < 1) return `${Math.round(diff * 60)}m ago`;
+    if (diff < 24) return `${Math.round(diff)}h ago`;
+    return `${Math.round(diff / 24)}d ago`;
   };
 
   return (
     <AdminMobileShell
-      title="Department Notices"
-      subtitle="Send notices to department students"
+      title={`${department?.name || "Department"} Notice Board`}
+      subtitle={`Broadcast to ${department?.name || "department"} students`}
       headerColor="bg-gradient-to-r from-green-600 to-teal-700"
+      backTo="/hod/dashboard"
     >
       {error && (
-        <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm border border-red-200 mb-4">
+        <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm border border-red-200">
           {error}
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
-        <div className="font-bold text-gray-900 mb-3">Create New Notice</div>
-        <form onSubmit={handleSubmit} className="space-y-3">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <div className="font-bold text-gray-900 mb-3">Draft New Notice</div>
+        <div className="space-y-3">
           <input
             type="text"
-            placeholder="Notice Title"
-            value={formData.title}
-            onChange={(e) => setFormData({...formData, title: e.target.value})}
+            placeholder="Notice Title (e.g. Holiday Alert)"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
             className="input-base"
-            required
           />
           <textarea
-            placeholder="Notice Message"
-            value={formData.message}
-            onChange={(e) => setFormData({...formData, message: e.target.value})}
-            className="input-base h-24 resize-none"
+            placeholder="Write your message here..."
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
             rows={4}
-            required
+            className="input-base h-28 resize-none"
           />
-          <select
-            value={formData.targetAudience}
-            onChange={(e) => setFormData({...formData, targetAudience: e.target.value})}
-            className="input-base"
-          >
-            <option value="department">All Department Students</option>
-            <option value="class">Specific Class</option>
-          </select>
-          <button type="submit" disabled={loading} className="btn-primary w-full">
-            {loading ? "Posting..." : "Post Notice"}
+          
+          <div className="border-2 border-dashed border-gray-300 rounded-xl p-4">
+            <label className="block">
+              <div className="text-center">
+                <div className="text-2xl mb-2">📄</div>
+                <div className="text-sm text-gray-600 mb-2">
+                  {uploading ? "Uploading..." : pdfFile ? pdfFile.name : "Click to upload PDF (optional)"}
+                </div>
+                <div className="text-xs text-gray-500">Max size: 10MB</div>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={handleFileChange}
+                  disabled={uploading}
+                  className="hidden"
+                />
+              </div>
+            </label>
+          </div>
+          
+          {pdfUrl && (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-xl">
+              <p className="text-sm text-green-700">✅ PDF uploaded successfully</p>
+              <p className="text-xs text-green-600 mt-1">File will be attached to notice</p>
+            </div>
+          )}
+          
+          <button onClick={handlePublish} disabled={loading || uploading} className="btn-primary w-full">
+            {loading ? "Publishing..." : uploading ? "Uploading..." : "Publish Broadcast"}
           </button>
-        </form>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-        <div className="font-bold text-gray-900 mb-3">Recent Notices</div>
-        <div className="space-y-2">
+        <div className="flex justify-between items-center mb-3">
+          <div className="font-bold text-gray-900">All Notices</div>
+          <span className="px-2 py-1 bg-green-50 text-green-700 rounded-full text-xs font-semibold">
+            {notices.length} ACTIVE
+          </span>
+        </div>
+        <div className="mb-3 p-2 bg-blue-50 rounded-lg">
+          <p className="text-xs text-blue-700">
+            📢 Showing global notices + {department?.name || "department"} notices
+          </p>
+        </div>
+        <div className="space-y-3">
           {notices.length === 0 ? (
-            <div className="text-center text-gray-500 py-4">No notices yet</div>
+            <div className="text-center py-8">
+              <div className="text-4xl mb-2">📢</div>
+              <p className="text-gray-500 text-sm">No notices yet</p>
+              <p className="text-xs text-gray-400 mt-1">Create your first department notice above</p>
+            </div>
           ) : (
-            notices.map((notice) => (
-              <div key={notice._id} className="p-3 border rounded-xl">
-                <div className="font-semibold text-gray-900">{notice.title}</div>
-                <div className="text-sm text-gray-600 mt-1">{notice.message}</div>
-                <div className="flex justify-between items-center mt-2">
-                  <span className="text-xs text-gray-500">
-                    {formatDate(notice.createdAt)}
-                  </span>
-                  {notice.targetAudience && (
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      notice.targetAudience === 'department' 
-                        ? 'bg-green-100 text-green-700' 
-                        : 'bg-blue-100 text-blue-700'
-                    }`}>
-                      {notice.targetAudience === 'department' ? 'Department' : 'Class'}
-                    </span>
-                  )}
-                </div>
+            notices.map((n) => (
+              <div key={n._id} className="p-4 border rounded-xl bg-gray-50">
+                <h3 className="font-semibold text-gray-900">{n.title}</h3>
+                <p className="text-sm text-gray-600 mt-1">{n.body || ""}</p>
+                {n.attachment && (
+                  <div className="mt-2">
+                    <a 
+                      href={`http://localhost:5001${n.attachment}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    >
+                      📄 {n.attachment.split('/').pop()}
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  </div>
+                )}
+                <p className="text-xs text-gray-400 mt-2">{formatTime(n.createdAt)}</p>
               </div>
             ))
           )}
         </div>
-      </div>
-
-      {/* Back Button */}
-      <div className="mt-4">
-        <button
-          onClick={() => navigate("/hod/dashboard")}
-          className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-gray-100 transition"
-        >
-          Back to Dashboard
-        </button>
       </div>
     </AdminMobileShell>
   );

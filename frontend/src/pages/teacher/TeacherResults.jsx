@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { authAPI, adminAPI } from "../../services/api";
+import { authAPI, teacherAPI } from "../../services/api";
 import AdminMobileShell from "../../components/AdminMobileShell";
 
 export default function TeacherResults() {
@@ -10,6 +10,7 @@ export default function TeacherResults() {
   const [elections, setElections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -19,8 +20,8 @@ export default function TeacherResults() {
 
         if (userResponse.data.assignedClass) {
           const [classResponse, electionsResponse] = await Promise.all([
-            adminAPI.getClass(userResponse.data.assignedClass),
-            adminAPI.elections.list()
+            teacherAPI.getClass(userResponse.data.assignedClass),
+            teacherAPI.elections.list()
           ]);
           setClassData(classResponse.data);
           
@@ -49,6 +50,11 @@ export default function TeacherResults() {
     if (end && now > end) return 'Closed';
     return 'Active';
   };
+
+  // Filter elections for display
+  const filteredElections = elections.filter((election) =>
+    !search ? true : String(election.title || "").toLowerCase().includes(search.toLowerCase())
+  );
 
   const handleViewResults = (electionId) => {
     navigate(`/teacher/results/detail?electionId=${electionId}`);
@@ -82,6 +88,17 @@ export default function TeacherResults() {
         </div>
       )}
 
+      {/* Search Bar */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
+        <input
+          type="text"
+          placeholder="Search elections..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="input-base w-full"
+        />
+      </div>
+
       {/* Class Info */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
         <div className="font-bold text-gray-900 mb-3">Class Information</div>
@@ -110,12 +127,12 @@ export default function TeacherResults() {
           <div className="text-xs font-semibold text-gray-500">{elections.length} TOTAL</div>
         </div>
         <div className="space-y-2">
-          {elections.length === 0 ? (
+          {filteredElections.length === 0 ? (
             <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 text-center text-gray-600">
-              No elections created yet. Create elections to see results here.
+              {search ? "No elections found matching your search" : "No elections created yet. Create elections to see results here."}
             </div>
           ) : (
-            elections.map((election) => {
+            filteredElections.map((election) => {
               const status = getElectionStatus(election);
               return (
                 <div key={election._id} className="p-4 border rounded-xl bg-white">

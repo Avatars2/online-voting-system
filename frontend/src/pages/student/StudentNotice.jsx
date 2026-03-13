@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { noticesAPI } from "../../services/api";
+import { studentAPI } from "../../services/api";
 import StudentMobileShell from "../../components/StudentMobileShell";
 
 export default function StudentNotice() {
@@ -10,9 +10,11 @@ export default function StudentNotice() {
   useEffect(() => {
     const fetchNotices = async () => {
       try {
-        const res = await noticesAPI.list();
+        const res = await studentAPI.notices();
+        console.log("Student notices fetched:", res.data);
         setNotices(res.data || []);
       } catch (err) {
+        console.error("Failed to fetch student notices:", err);
         setError(err.response?.data?.error || "Failed to load notices");
         setNotices([]);
       } finally {

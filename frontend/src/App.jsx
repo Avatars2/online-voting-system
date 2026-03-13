@@ -27,11 +27,14 @@ const AdminResultDetail = lazy(() => import("./pages/admin/AdminResultDetail"));
 const HODDashboard = lazy(() => import("./pages/hod/HODDashboard"));
 const HODProfile = lazy(() => import("./pages/hod/HODProfile"));
 const HODStudentRegister = lazy(() => import("./pages/hod/HODStudentRegister"));
+const HODStudents = lazy(() => import("./pages/hod/HODStudents"));
 const HODNoticePage = lazy(() => import("./pages/hod/HODNoticePage"));
 const HODElections = lazy(() => import("./pages/hod/HODElections"));
-const HODResults = lazy(() => import("./pages/hod/HODResults"));
-const HODDepartment = lazy(() => import("./pages/hod/HODDepartment"));
-const HODClassManagement = lazy(() => import("./pages/hod/HODClassManagement"));
+const HODResults = lazy(() => import("./pages/hod/HODResultPage"));
+const HODResultDetail = lazy(() => import("./pages/hod/HODResultDetail"));
+const HODDeptDetail = lazy(() => import("./pages/hod/HODDeptDetail"));
+const HODClassDetail = lazy(() => import("./pages/hod/HODClassDetail"));
+const DepartmentDetail = lazy(() => import("./pages/shared/DepartmentDetail"));
 const HODRegistration = lazy(() => import("./pages/hod/HODRegistration"));
 
 /* TEACHER */
@@ -41,6 +44,7 @@ const TeacherElections = lazy(() => import("./pages/teacher/TeacherElections"));
 const TeacherResults = lazy(() => import("./pages/teacher/TeacherResults"));
 const TeacherProfile = lazy(() => import("./pages/teacher/TeacherProfile"));
 const TeacherNoticePage = lazy(() => import("./pages/teacher/TeacherNoticePage"));
+const TeacherResultDetail = lazy(() => import("./pages/teacher/TeacherResultDetail"));
 
 /* STUDENT */
 const StudentDashboard = lazy(() => import("./pages/student/StudentDashboard"));
@@ -172,6 +176,11 @@ export default function App() {
                 <ProtectedRoute element={<HODStudentRegister />} requiredRoles={["hod"]} />
               </Suspense>
             } />
+            <Route path="/hod/students" element={
+              <Suspense fallback={<PageLoader />}>
+                <ProtectedRoute element={<HODStudents />} requiredRoles={["hod"]} />
+              </Suspense>
+            } />
             <Route path="/hod/notices" element={
               <Suspense fallback={<PageLoader />}>
                 <ProtectedRoute element={<HODNoticePage />} requiredRoles={["hod"]} />
@@ -187,14 +196,24 @@ export default function App() {
                 <ProtectedRoute element={<HODResults />} requiredRoles={["hod"]} />
               </Suspense>
             } />
-            <Route path="/hod/department" element={
+            <Route path="/hod/results/detail" element={
               <Suspense fallback={<PageLoader />}>
-                <ProtectedRoute element={<HODDepartment />} requiredRoles={["hod"]} />
+                <ProtectedRoute element={<HODResultDetail />} requiredRoles={["hod"]} />
               </Suspense>
             } />
-            <Route path="/hod/department/:id/classes" element={
+            <Route path="/departments/:id" element={
               <Suspense fallback={<PageLoader />}>
-                <ProtectedRoute element={<HODClassManagement />} requiredRoles={["hod"]} />
+                <ProtectedRoute element={<DepartmentDetail />} requiredRoles={["admin", "hod"]} />
+              </Suspense>
+            } />
+            <Route path="/hod/department/:id" element={
+              <Suspense fallback={<PageLoader />}>
+                <ProtectedRoute element={<HODDeptDetail />} requiredRoles={["hod"]} />
+              </Suspense>
+            } />
+            <Route path="/hod/classes/:id" element={
+              <Suspense fallback={<PageLoader />}>
+                <ProtectedRoute element={<HODClassDetail />} requiredRoles={["hod"]} />
               </Suspense>
             } />
             <Route path="/hod/register" element={
@@ -209,7 +228,7 @@ export default function App() {
                 <ProtectedRoute element={<TeacherDashboard />} requiredRoles={["teacher"]} />
               </Suspense>
             } />
-            <Route path="/teacher/class" element={
+            <Route path="/teacher/class/:id" element={
               <Suspense fallback={<PageLoader />}>
                 <ProtectedRoute element={<TeacherClassPage />} requiredRoles={["teacher"]} />
               </Suspense>
@@ -227,6 +246,11 @@ export default function App() {
             <Route path="/teacher/results" element={
               <Suspense fallback={<PageLoader />}>
                 <ProtectedRoute element={<TeacherResults />} requiredRoles={["teacher"]} />
+              </Suspense>
+            } />
+            <Route path="/teacher/results/detail" element={
+              <Suspense fallback={<PageLoader />}>
+                <ProtectedRoute element={<TeacherResultDetail />} requiredRoles={["teacher"]} />
               </Suspense>
             } />
             <Route path="/teacher/profile" element={

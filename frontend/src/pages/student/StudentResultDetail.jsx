@@ -21,11 +21,37 @@ export default function StudentResultDetail() {
         const res = await studentAPI.getElectionCandidates(electionId);
         const candidates = res.data?.candidates || [];
         const sortedCandidates = candidates.sort((a, b) => (b.votes || 0) - (a.votes || 0));
-        const winner = sortedCandidates.length > 0 ? sortedCandidates[0] : null;
+        
+        // Check for draw
+        let winner = null;
+        let isDraw = false;
+        let tiedCandidates = [];
+        let message = "";
+        
+        if (sortedCandidates.length > 0) {
+          const topVotes = sortedCandidates[0].votes;
+          const topCandidates = sortedCandidates.filter(candidate => candidate.votes === topVotes);
+          
+          if (topCandidates.length > 1 && topVotes > 0) {
+            isDraw = true;
+            tiedCandidates = topCandidates;
+            winner = null;
+            message = "Election resulted in a draw - no winner declared";
+          } else if (topVotes > 0) {
+            winner = sortedCandidates[0];
+            isDraw = false;
+            message = "Winner declared";
+          } else {
+            message = "No votes cast";
+          }
+        }
         
         setData({
           candidates: sortedCandidates,
           winner: winner,
+          isDraw: isDraw,
+          tiedCandidates: tiedCandidates,
+          message: message,
           election: res.data?.election || null
         });
       } catch (err) {
@@ -40,6 +66,9 @@ export default function StudentResultDetail() {
 
   const candidates = data?.candidates || [];
   const winner = data?.winner || null;
+  const isDraw = data?.isDraw || false;
+  const tiedCandidates = data?.tiedCandidates || [];
+  const message = data?.message || "";
   const election = data?.election || null;
   const maxVotes = Math.max(...candidates.map((c) => c.votes || 0), 1);
 
@@ -79,7 +108,7 @@ export default function StudentResultDetail() {
           )}
 
           {/* Winner Section */}
-          {winner && (
+          {winner && !isDraw && (
             <div className="bg-white rounded-2xl shadow-sm p-6 border border-yellow-200 mb-4">
               <div className="text-center">
                 <div className="text-xs font-semibold tracking-widest text-yellow-700 uppercase">
@@ -103,6 +132,49 @@ export default function StudentResultDetail() {
             </div>
           )}
 
+          {/* Draw Section */}
+          {isDraw && (
+            <div className="bg-white rounded-2xl shadow-sm p-6 border border-orange-200 mb-4">
+              <div className="text-center">
+                <div className="text-xs font-semibold tracking-widest text-orange-700 uppercase">
+                  Election Draw
+                </div>
+                <div className="mt-3 text-lg font-bold text-orange-800">
+                  {message}
+                </div>
+                <div className="mt-4">
+                  <div className="text-sm font-semibold text-gray-700 mb-3">Tied Candidates:</div>
+                  <div className="flex justify-center gap-4 flex-wrap">
+                    {tiedCandidates.map((candidate) => (
+                      <div key={candidate._id} className="text-center">
+                        <div className="w-16 h-16 rounded-full ring-4 ring-orange-300 overflow-hidden bg-gray-100 flex items-center justify-center mx-auto">
+                          <span className="text-lg font-bold text-gray-700">
+                            {String(candidate.name || "?").slice(0, 1).toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="mt-2 text-sm font-medium text-gray-900">{candidate.name}</div>
+                        <div className="text-xs text-orange-700 font-semibold">
+                          {candidate.votes || 0} votes
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* No Votes Section */}
+          {!winner && !isDraw && candidates.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-200 mb-4">
+              <div className="text-center">
+                <div className="text-lg font-medium text-gray-700">
+                  {message}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Vote Breakdown */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <div className="text-sm font-bold text-gray-700 uppercase mb-4">Vote Breakdown</div>
@@ -115,9 +187,14 @@ export default function StudentResultDetail() {
                     <div className="flex items-center justify-between text-sm mb-2">
                       <div className="font-medium text-gray-900">
                         {c.name}
-                        {winner?._id === c._id && (
+                        {winner && !isDraw && winner._id === c._id && (
                           <span className="ml-2 px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-semibold rounded-full">
                             Winner
+                          </span>
+                        )}
+                        {isDraw && tiedCandidates.some(tc => tc._id === c._id) && (
+                          <span className="ml-2 px-2 py-1 bg-orange-100 text-orange-800 text-xs font-semibold rounded-full">
+                            Tied
                           </span>
                         )}
                       </div>
@@ -125,7 +202,13 @@ export default function StudentResultDetail() {
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2.5">
                       <div
-                        className={`h-2.5 rounded-full ${winner?._id === c._id ? "bg-yellow-500" : "bg-emerald-600"}`}
+                        className={`h-2.5 rounded-full ${
+                          isDraw && tiedCandidates.some(tc => tc._id === c._id)
+                            ? "bg-orange-500"
+                            : winner && winner._id === c._id
+                            ? "bg-yellow-500"
+                            : "bg-emerald-600"
+                        }`}
                         style={{ width: `${((c.votes || 0) / maxVotes) * 100}%` }}
                       />
                     </div>
@@ -135,25 +218,7 @@ export default function StudentResultDetail() {
             )}
           </div>
 
-          {/* Statistics */}
-          {candidates.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mt-4">
-              <div className="text-sm font-bold text-gray-700 uppercase mb-3">Statistics</div>
-              <div className="grid grid-cols-2 gap-4 text-center">
-                <div>
-                  <div className="text-2xl font-bold text-emerald-600">{candidates.length}</div>
-                  <div className="text-xs text-gray-600">Total Candidates</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-emerald-600">
-                    {candidates.reduce((sum, c) => sum + (c.votes || 0), 0)}
-                  </div>
-                  <div className="text-xs text-gray-600">Total Votes</div>
-                </div>
-              </div>
-            </div>
-          )}
-        </>
+                  </>
       )}
     </StudentMobileShell>
   );

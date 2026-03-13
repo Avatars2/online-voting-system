@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { authAPI, adminAPI } from "../../services/api";
+import { authAPI, hodAPI } from "../../services/api";
 import AdminMobileShell from "../../components/AdminMobileShell";
 
 export default function HODDashboard() {
@@ -16,16 +16,11 @@ export default function HODDashboard() {
         const userResponse = await authAPI.verifyToken();
         setUser(userResponse.data);
         
-        // Get all departments and filter where this HOD is registered
-        const deptsResponse = await adminAPI.departments.list();
+        // Get HOD's department using HOD API
+        const deptsResponse = await hodAPI.getDepartment();
         const allDepartments = deptsResponse.data || [];
         
-        // Filter departments where this HOD is the assigned HOD
-        const hodDepartments = allDepartments.filter(dept => 
-          dept.hod && dept.hod._id === userResponse.data._id
-        );
-        
-        setDepartments(hodDepartments);
+        setDepartments(allDepartments);
       } catch (err) {
         setError(err.response?.data?.error || "Failed to load departments");
       } finally {
@@ -37,7 +32,7 @@ export default function HODDashboard() {
   }, []);
 
   const handleDepartmentClick = (department) => {
-    navigate(`/hod/department/${department._id}`);
+    navigate(`/departments/${department._id}`);
   };
 
   const formatDate = (dateString) => {
@@ -125,18 +120,18 @@ export default function HODDashboard() {
             <span className="text-xs font-medium text-gray-700">Elections</span>
           </button>
           <button
+            onClick={() => navigate("/hod/students")}
+            className="p-3 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors text-center"
+          >
+            <span className="text-2xl block mb-1">👥</span>
+            <span className="text-xs font-medium text-gray-700">Students</span>
+          </button>
+          <button
             onClick={() => navigate("/hod/results")}
             className="p-3 bg-orange-50 hover:bg-orange-100 rounded-xl transition-colors text-center"
           >
             <span className="text-2xl block mb-1">📊</span>
             <span className="text-xs font-medium text-gray-700">Results</span>
-          </button>
-          <button
-            onClick={() => navigate("/hod/profile")}
-            className="p-3 bg-green-50 hover:bg-green-100 rounded-xl transition-colors text-center"
-          >
-            <span className="text-2xl block mb-1">👤</span>
-            <span className="text-xs font-medium text-gray-700">Profile</span>
           </button>
         </div>
       </div>

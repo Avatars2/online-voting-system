@@ -10,10 +10,14 @@ export default function DepartmentPage() {
   const [name, setName] = useState("");
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [error, setError] = useState("");
 
   const fetch = () => {
-    adminAPI.departments.list().then((r) => setDepartments(r.data || [])).catch(() => setDepartments([]));
+    adminAPI.departments.list().then((r) => {
+      console.log("Departments fetched:", r.data);
+      setDepartments(r.data || []);
+    }).catch(() => setDepartments([]));
   };
   useEffect(() => fetch(), []);
 
@@ -45,6 +49,29 @@ export default function DepartmentPage() {
         showError(errorMessage);
       })
       .finally(() => setLoading(false));
+  };
+
+  const handleDeleteDepartment = async (departmentId, departmentName) => {
+    if (!window.confirm(`Are you sure you want to delete "${departmentName}"? This action cannot be undone and will also remove all associated data.`)) {
+      return;
+    }
+
+    setDeleteLoading(true);
+    try {
+      await adminAPI.departments.delete(departmentId);
+      console.log(`Department ${departmentName} deleted successfully`);
+      success(`Department "${departmentName}" deleted successfully!`);
+      
+      // Refresh the departments list
+      fetch();
+    } catch (err) {
+      console.error("Failed to delete department:", err);
+      const errorMessage = err.response?.data?.error || "Failed to delete department";
+      setError(errorMessage);
+      showError(errorMessage);
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   const handleRegisterHod = () => {
@@ -88,9 +115,12 @@ export default function DepartmentPage() {
         </div>
         <div className="space-y-2">
           {departments.map((d) => (
-            <div key={d._id} className="bg-white border rounded-xl p-4">
+            <div 
+              key={d._id} 
+              className="bg-white border rounded-xl p-4 hover:bg-gray-50 hover:border-blue-200 transition"
+            >
               <div className="flex justify-between items-start">
-                <div className="flex-1">
+                <div className="flex-1 cursor-pointer" onClick={() => navigate(`/departments/${d._id}`)}>
                   <p className="font-semibold text-gray-900">{d.name}</p>
                   <div className="mt-2">
                     <p className="text-sm text-gray-600">
@@ -103,12 +133,21 @@ export default function DepartmentPage() {
                     )}
                   </div>
                 </div>
-                <div className="flex space-x-2">
+                <div className="flex items-center space-x-2">
+                  <div className="text-blue-600 cursor-pointer" onClick={() => navigate(`/departments/${d._id}`)}>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
                   <button
-                    onClick={() => navigate(`/admin/departments/${d._id}`)}
-                    className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-200 transition"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteDepartment(d._id, d.name);
+                    }}
+                    disabled={deleteLoading}
+                    className="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Manage
+                    {deleteLoading ? "..." : "🗑️ Delete"}
                   </button>
                 </div>
               </div>

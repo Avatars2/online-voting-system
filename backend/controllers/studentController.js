@@ -20,7 +20,7 @@ export async function me(req, res){
 
 export async function listElections(req, res){
   try {
-    const user = req.user;
+    const user = await User.findById(req.user._id).populate('votedElections');
     const deptId = user?.department ? String(user.department) : null;
     const classId = user?.class ? String(user.class) : null;
 
@@ -31,7 +31,15 @@ export async function listElections(req, res){
     const items = await Election.find({ $or: or })
       .sort({ createdAt: -1 })
       .populate("department class");
-    res.json(items);
+    
+    // Add voted status to each election
+    const votedElectionIds = (user.votedElections || []).map(e => e._id.toString());
+    const electionsWithStatus = items.map(election => ({
+      ...election.toObject(),
+      hasVoted: votedElectionIds.includes(election._id.toString())
+    }));
+    
+    res.json(electionsWithStatus);
   } catch (err) {
     console.error('listElections error:', err);
     res.status(500).json({ error: 'Server error' });

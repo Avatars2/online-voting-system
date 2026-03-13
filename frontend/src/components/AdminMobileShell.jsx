@@ -17,7 +17,6 @@ const HOD_MENU = [
   { label: "Profile", path: "/hod/profile", icon: "👤" },
   { label: "Reset Password", path: "/hod/reset-password", icon: "🔒" },
   { label: "Notice", path: "/hod/notices", icon: "🔔" },
-  { label: "Department", path: "/hod/department", icon: "🏢" },
   { label: "Election", path: "/hod/elections", icon: "🗳️" },
   { label: "Result", path: "/hod/results", icon: "📊" },
 ];
@@ -27,7 +26,6 @@ const TEACHER_MENU = [
   { label: "Profile", path: "/teacher/profile", icon: "👤" },
   { label: "Reset Password", path: "/teacher/reset-password", icon: "🔒" },
   { label: "Students", path: "/teacher/students", icon: "👥" },
-  { label: "Attendance", path: "/teacher/attendance", icon: "📅" },
   { label: "Reports", path: "/teacher/reports", icon: "📊" },
   { label: "Notices", path: "/teacher/notices", icon: "🔔" },
 ];

@@ -1,230 +1,207 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { authAPI } from "../../services/api";
+import { authAPI, hodAPI } from "../../services/api";
 import AdminMobileShell from "../../components/AdminMobileShell";
 
-export default function HODProfile() {
-  const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+export default function HODProfile(){
+  const nav = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    department: "",
-    photo: null
-  });
-  const [photoPreview, setPhotoPreview] = useState("");
+  const [success, setSuccess] = useState("");
+  const [me, setMe] = useState(null);
+  const [department, setDepartment] = useState(null);
+  const [form, setForm] = useState({ name: "", phone: "", avatarUrl: "" });
 
   useEffect(() => {
-    const fetchProfile = async () => {
+    const run = async () => {
+      setLoading(true);
+      setError("");
       try {
-        const response = await authAPI.verifyToken();
-        setUser(response.data);
-        setFormData({
-          name: response.data.name || "",
-          email: response.data.email || "",
-          phone: response.data.phone || "",
-          department: response.data.assignedDepartment?.name || "",
-          photo: response.data.photo || null
+        const [userResponse, deptResponse] = await Promise.all([
+          authAPI.verifyToken(),
+          hodAPI.getDepartment()
+        ]);
+        
+        const user = userResponse.data?.user || userResponse.data || null;
+        const deptData = deptResponse.data;
+        
+        setMe(user);
+        setDepartment(deptData?.[0] || null);
+        setForm({
+          name: user?.name || "",
+          phone: user?.phone || "",
+          avatarUrl: user?.avatarUrl || "",
         });
-        setPhotoPreview(response.data.photo || "");
       } catch (err) {
         setError(err.response?.data?.error || "Failed to load profile");
       } finally {
         setLoading(false);
       }
     };
-
-    fetchProfile();
+    run();
   }, []);
 
-  const handlePhotoChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        setError("Photo size should be less than 5MB");
-        return;
-      }
-      setFormData({...formData, photo: file});
-      setPhotoPreview(URL.createObjectURL(file));
+  const avatarSrc = useMemo(() => {
+    // If user has uploaded a custom avatar, show that
+    if (form.avatarUrl && form.avatarUrl.startsWith('data:')) {
+      return form.avatarUrl;
     }
+    // Otherwise, show white avatar
+    return "https://ui-avatars.com/api/?name=" + encodeURIComponent(form.name || "HOD") + "&background=ffffff&color=000000&size=150";
+  }, [form.name, form.avatarUrl]);
+
+  const handleAvatarFileChange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const maxSizeBytes = 1024 * 1024 * 5; // Increased to 5MB
+    if (file.size > maxSizeBytes) {
+      setError("Image is too large. Please select a file under 5MB");
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      setError("Please select an image file");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result;
+      if (typeof result === "string") {
+        setForm((prev) => ({ ...prev, avatarUrl: result }));
+        setSuccess("");
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
-  const handleUpdate = async () => {
+  const handleSave = async () => {
+    setError("");
+    setSuccess("");
+    if (!form.name.trim()) {
+      setError("Name is required");
+      return;
+    }
+    setSaving(true);
     try {
-      setLoading(true);
-      
-      const updateData = {
-        name: formData.name,
-        phone: formData.phone
-      };
-
-      // If photo is a file, upload it
-      if (formData.photo instanceof File) {
-        const formDataToSend = new FormData();
-        formDataToSend.append('photo', formData.photo);
-        formDataToSend.append('name', formData.name);
-        formDataToSend.append('phone', formData.phone);
-        
-        // For now, we'll just update the basic info
-        await authAPI.updateMe(updateData);
-      } else {
-        await authAPI.updateMe(updateData);
-      }
-      
-      // Update local storage
-      const updatedUser = { ...user, ...updateData };
-      localStorage.setItem("user", JSON.stringify(updatedUser));
-      setUser(updatedUser);
-      
-      alert("Profile updated successfully!");
+      const res = await authAPI.updateMe({
+        name: form.name.trim(),
+        phone: form.phone.trim(),
+        avatarUrl: form.avatarUrl.trim(),
+      });
+      const user = res.data?.user || res.data || null;
+      setMe(user);
+      setSuccess("Profile updated successfully");
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to update profile");
+      setError(err.response?.data?.error || "Failed to save profile");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  if (loading && !user) {
-    return (
-      <AdminMobileShell
-        title="HOD Profile"
-        subtitle="Manage your profile"
-        headerColor="bg-gradient-to-r from-green-600 to-teal-700"
-      >
-        <div className="flex items-center justify-center h-64">
-          <div className="text-gray-600">Loading...</div>
-        </div>
-      </AdminMobileShell>
-    );
-  }
-
-  return (
+  return(
     <AdminMobileShell
-      title="HOD Profile"
-      subtitle="Manage your profile"
+      title="My Profile"
+      subtitle="HOD account information"
       headerColor="bg-gradient-to-r from-green-600 to-teal-700"
+      backTo="/hod/dashboard"
     >
       {error && (
-        <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm border border-red-200 mb-4">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
           {error}
         </div>
       )}
-
-      {/* Profile Photo */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
-        <div className="font-bold text-gray-900 mb-4">Profile Photo</div>
-        <div className="flex flex-col items-center">
-          <div className="w-24 h-24 bg-gradient-to-r from-green-600 to-teal-700 rounded-full flex items-center justify-center text-white text-3xl font-bold mb-3">
-            {photoPreview ? (
-              <img src={photoPreview} alt="Profile" className="w-full h-full rounded-full object-cover" />
-            ) : (
-              user?.name?.charAt(0)?.toUpperCase() || "H"
-            )}
-          </div>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handlePhotoChange}
-            className="hidden"
-            id="photo-upload"
-          />
-          <label
-            htmlFor="photo-upload"
-            className="px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm font-medium hover:bg-blue-100 transition cursor-pointer"
-          >
-            Change Photo
-          </label>
+      {success && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-sm">
+          ✓ {success}
         </div>
-      </div>
+      )}
 
-      {/* Profile Information */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-        <div className="font-bold text-gray-900 mb-4">Profile Information</div>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({...formData, name: e.target.value})}
-              className="input-base"
-              placeholder="Enter your full name"
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="p-5 flex flex-col items-center text-center">
+          <div className="relative">
+            <img
+              src={avatarSrc}
+              alt="HOD"
+              className="w-24 h-24 rounded-full object-cover ring-4 ring-green-100"
+              onError={(e) => {
+                e.currentTarget.src = "https://i.pravatar.cc/150";
+              }}
             />
+            <div className="absolute bottom-1 right-1 w-7 h-7 rounded-full bg-green-600 text-white flex items-center justify-center text-xs font-bold">
+              ✓
+            </div>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-            <input
-              type="email"
-              value={formData.email}
-              disabled
-              className="input-base bg-gray-50"
-              placeholder="Email cannot be changed"
-            />
-            <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-            <input
-              type="tel"
-              value={formData.phone}
-              onChange={(e) => setFormData({...formData, phone: e.target.value})}
-              className="input-base"
-              placeholder="Enter your phone number"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-            <input
-              type="text"
-              value={formData.department}
-              disabled
-              className="input-base bg-gray-50"
-              placeholder="Department assigned by admin"
-            />
-            <p className="text-xs text-gray-500 mt-1">Department assigned by admin</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-            <input
-              type="text"
-              value="Head of Department (HOD)"
-              disabled
-              className="input-base bg-gray-50"
-            />
-          </div>
+          <h2 className="mt-3 text-xl font-bold text-gray-900">
+            {loading ? "Loading..." : form.name || "HOD"}
+          </h2>
+          <p className="text-sm text-gray-600">Head of Department</p>
+          {department?.name && (
+            <p className="text-xs text-gray-500 mt-1">
+              Department: {department.name}
+            </p>
+          )}
+          <span className="mt-3 inline-flex items-center px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-xs font-semibold">
+            HEAD OF DEPARTMENT
+          </span>
         </div>
 
-        <div className="mt-6 space-y-3">
-          <button
-            onClick={handleUpdate}
-            disabled={loading}
-            className="btn-primary w-full"
-          >
-            {loading ? "Updating..." : "Update Profile"}
-          </button>
-          
-          <button
-            onClick={() => navigate("/hod/reset-password")}
-            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-gray-100 transition"
-          >
-            Change Password
-          </button>
-          
-          <button
-            onClick={() => navigate("/hod/dashboard")}
-            className="w-full p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700 font-medium hover:bg-blue-100 transition"
-          >
-            Back to Dashboard
-          </button>
-        </div>
+        <div className="px-5 pb-5 space-y-5">
+          <div>
+            <div className="text-xs font-bold text-gray-500 uppercase mb-3">Account Information</div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-xl p-3">
+                <div className="text-sm text-gray-700">Email</div>
+                <div className="text-sm font-semibold text-gray-900 truncate max-w-[60%]">
+                  {me?.email || "—"}
+                </div>
+              </div>
+              <div className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-xl p-3">
+                <div className="text-sm text-gray-700">Phone</div>
+                <div className="text-sm font-semibold text-gray-900 truncate max-w-[60%]">
+                  {me?.phone || "—"}
+                </div>
+              </div>
+              <div className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-xl p-3">
+                <div className="text-sm text-gray-700">Department</div>
+                <div className="text-sm font-semibold text-gray-900 truncate max-w-[60%]">
+                  {department?.name || "—"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="text-xs font-bold text-gray-500 uppercase mb-3">Edit Profile</div>
+            <div className="space-y-3">
+              <input
+                className="input-base"
+                placeholder="HOD name"
+                value={form.name}
+                onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                disabled={loading || saving}
+              />
+              <input
+                className="input-base"
+                placeholder="Phone number"
+                value={form.phone}
+                onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
+                disabled={loading || saving}
+              />
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarFileChange}
+                disabled={loading || saving}
+                className="block w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+              />
+              <button onClick={handleSave} className="btn-primary w-full" disabled={loading || saving}>
+                {saving ? "Saving..." : "Save Profile"}
+              </button>
+            </div>
+          </div>
+
+          </div>
       </div>
     </AdminMobileShell>
-  );
+  )
 }

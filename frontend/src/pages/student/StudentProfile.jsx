@@ -193,24 +193,7 @@ export default function StudentProfile(){
             </div>
           </div>
 
-          <div>
-            <div className="text-xs font-bold text-gray-500 uppercase mb-3">Quick Actions</div>
-            <div className="grid grid-cols-3 gap-3">
-              <button onClick={() => nav("/student/reset-password")} className="bg-white border rounded-xl p-3 text-center hover:bg-gray-50">
-                <div className="text-xl">🔒</div>
-                <div className="text-xs font-semibold text-gray-700 mt-1">Password</div>
-              </button>
-              <button onClick={() => nav("/student/notices")} className="bg-white border rounded-xl p-3 text-center hover:bg-gray-50">
-                <div className="text-xl">🔔</div>
-                <div className="text-xs font-semibold text-gray-700 mt-1">Notices</div>
-              </button>
-              <button onClick={() => nav("/student/elections")} className="bg-white border rounded-xl p-3 text-center hover:bg-gray-50">
-                <div className="text-xl">🗳️</div>
-                <div className="text-xs font-semibold text-gray-700 mt-1">Elections</div>
-              </button>
-            </div>
           </div>
-        </div>
       </div>
     </StudentMobileShell>
   )

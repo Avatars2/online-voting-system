@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { adminAPI } from "../../services/api";
+import { hodAPI } from "../../services/api";
 import AdminMobileShell from "../../components/AdminMobileShell";
 
-export default function AdminResultDetail(){
+export default function HODResultDetail(){
   const [params] = useSearchParams();
   const electionId = params.get("electionId");
 
@@ -17,7 +17,7 @@ export default function AdminResultDetail(){
       setLoading(true);
       setError("");
       try {
-        const res = await adminAPI.results(electionId);
+        const res = await hodAPI.results(electionId);
         setData(res.data || null);
       } catch (err) {
         setError(err.response?.data?.error || "Failed to load result details");
@@ -40,8 +40,8 @@ export default function AdminResultDetail(){
     <AdminMobileShell
       title="Election Outcome"
       subtitle="Final verdict"
-      headerColor="bg-gradient-to-r from-slate-800 to-slate-950"
-      backTo="/admin/results"
+      headerColor="bg-gradient-to-r from-green-600 to-teal-700"
+      backTo="/hod/results"
     >
       {!electionId ? (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-gray-700">

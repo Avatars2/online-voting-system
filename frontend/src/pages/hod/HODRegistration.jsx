@@ -17,7 +17,6 @@ export default function HODRegistration() {
     name: "",
     email: "",
     password: "",
-    confirmPassword: "",
     phone: "",
     department: ""
   });
@@ -80,54 +79,27 @@ export default function HODRegistration() {
       setLoading(true);
       
       const hodData = {
+        name: formData.name.trim() || `HOD of ${departments.find(d => d._id === formData.department)?.name || 'Department'}`,
         email: formData.email.trim().toLowerCase(),
         password: formData.password,
-        name: formData.name.trim() || `HOD of ${departments.find(d => d._id === formData.department)?.name || 'Department'}`,
         phone: formData.phone.trim() || "",
-        role: "hod",
-        department: departments.find(d => d._id === formData.department)?.name || formData.department
+        departmentId: formData.department
       };
 
       console.log("Registering HOD with data:", hodData);
       
-      // Create HOD user using students endpoint (creates user in MongoDB Atlas)
-      const userData = {
-        name: hodData.name,
-        email: hodData.email,
-        password: hodData.password,
-        phone: hodData.phone,
-        role: "hod",
-        department: hodData.department
-      };
+      // Use the correct admin API endpoint for HOD registration
+      const response = await adminAPI.registerHOD(hodData);
+      console.log("HOD registered successfully:", response);
       
-      const userResponse = await adminAPI.students.create(userData);
-      console.log("User created successfully in MongoDB Atlas:", userResponse);
-      
-      // Get the created user ID
-      const createdUser = userResponse.data;
-      
-      // Update department with HOD info using the department ID
-      const selectedDept = departments.find(d => d.name === hodData.department);
-      if (selectedDept && createdUser._id) {
-        const hodAssignmentData = {
-          hodId: createdUser._id,
-          hodName: createdUser.name,
-          hodEmail: createdUser.email
-        };
-        
-        await adminAPI.registerHodForDepartment(selectedDept._id, hodAssignmentData);
-        console.log("Department updated with HOD info in MongoDB Atlas");
-      }
-      
-      setSuccessMessage(`HOD registration successful! ${createdUser.name} (${createdUser.email}) is now the Head of ${hodData.department} department.`);
-      showSuccess(`HOD registered for ${hodData.department} department!`);
+      setSuccessMessage(`HOD registration successful! ${response.data.hod.name} (${response.data.hod.email}) is now Head of Department.`);
+      showSuccess(`HOD registered successfully!`);
       
       // Reset form
       setFormData({
         name: "",
         email: "",
         password: "",
-        confirmPassword: "",
         phone: "",
         department: ""
       });
@@ -267,56 +239,14 @@ export default function HODRegistration() {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Confirm Password *
-            </label>
-            <input
-              type="password"
-              name="confirmPassword"
-              value={formData.confirmPassword}
-              onChange={handleInputChange}
-              className="input-base"
-              placeholder="Confirm your password"
-              disabled={loading}
-              required
-            />
-          </div>
-
-          <div className="flex space-x-3">
-            <button
-              type="submit"
-              disabled={loading || departments.length === 0}
-              className="btn-primary flex-1"
-            >
-              {loading ? "Registering..." : "Register as HOD"}
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/")}
-              className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-700 font-medium hover:bg-gray-100 transition"
-            >
-              Back to Login
-            </button>
-          </div>
+          <button
+            type="submit"
+            disabled={loading || departments.length === 0}
+            className="btn-primary w-full"
+          >
+            {loading ? "Registering..." : "Register as HOD"}
+          </button>
         </form>
-      </div>
-
-      {/* Information Card */}
-      <div className="bg-blue-50 rounded-2xl border border-blue-200 p-4 mt-4">
-        <div className="flex items-start">
-          <div className="text-blue-600 mr-3 mt-1">
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-            </svg>
-          </div>
-          <div>
-            <h4 className="font-semibold text-blue-900 mb-1">Department Head Registration</h4>
-            <p className="text-sm text-blue-800">
-              Register as Head of Department to get full access like college structure. After registration, you'll have complete control over your department including classes, students, elections, and notices.
-            </p>
-          </div>
-        </div>
       </div>
     </AdminMobileShell>
   );

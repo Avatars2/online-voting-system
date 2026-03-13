@@ -37,7 +37,12 @@ export default function StudentElection() {
   const handleElectionClick = (election) => {
     const status = getStatus(election);
     if (status === "Active") {
-      navigate(`/student/vote/${election._id}`);
+      if (election.hasVoted) {
+        // Show message that student has already voted
+        return;
+      } else {
+        navigate(`/student/vote/${election._id}`);
+      }
     }
   };
 
@@ -63,11 +68,12 @@ export default function StudentElection() {
         <div className="space-y-3">
           {elections.map((election) => {
             const status = getStatus(election);
+            const hasVoted = election.hasVoted;
             return (
               <div
                 key={election._id}
                 className={`bg-white rounded-2xl border border-gray-100 shadow-sm p-4 cursor-pointer hover:bg-emerald-50 transition ${
-                  status === "Active" ? "" : "opacity-80"
+                  status === "Active" && !hasVoted ? "" : "opacity-80"
                 }`}
                 onClick={() => handleElectionClick(election)}
               >
@@ -86,17 +92,21 @@ export default function StudentElection() {
                   </div>
                   <span
                     className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${
-                      status === "Active"
-                        ? "bg-emerald-100 text-emerald-800"
-                        : status === "Upcoming"
-                          ? "bg-blue-100 text-blue-800"
-                          : "bg-gray-100 text-gray-800"
+                      hasVoted
+                        ? "bg-purple-100 text-purple-800"
+                        : status === "Active"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : status === "Upcoming"
+                            ? "bg-blue-100 text-blue-800"
+                            : "bg-gray-100 text-gray-800"
                     }`}
                   >
-                    {status}
+                    {hasVoted ? "Voted" : status}
                   </span>
                 </div>
-                {status === "Active" ? (
+                {hasVoted && status === "Active" ? (
+                  <div className="mt-3 text-purple-700 text-sm font-semibold">You have already voted</div>
+                ) : status === "Active" ? (
                   <div className="mt-3 text-emerald-700 text-sm font-semibold">Vote Now →</div>
                 ) : null}
               </div>

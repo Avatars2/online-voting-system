@@ -163,7 +163,14 @@ export async function verifyToken(req, res) {
     const user = await User.findById(userId).select("-password")
       .populate("department class")
       .populate("assignedDepartment", "name")
-      .populate("assignedClass", "name year department");
+      .populate("assignedClass", "name year department")
+      .populate({
+        path: "assignedClass",
+        populate: {
+          path: "department",
+          select: "name"
+        }
+      });
     if (!user) return res.status(404).json({ error: "User not found" });
 
     return res.status(200).json({ user });
@@ -227,7 +234,14 @@ export async function updateMe(req, res) {
       .select("-password")
       .populate("department class")
       .populate("assignedDepartment", "name")
-      .populate("assignedClass", "name year department");
+      .populate("assignedClass", "name year department")
+      .populate({
+        path: "assignedClass",
+        populate: {
+          path: "department",
+          select: "name"
+        }
+      });
     if (!user) return res.status(404).json({ error: "User not found" });
 
     return res.status(200).json({ ok: true, user });

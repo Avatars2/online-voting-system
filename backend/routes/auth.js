@@ -1,6 +1,6 @@
 import express from 'express';
 import { login, logout, verifyToken, changePassword, updateMe, sendOTP, verifyOTP, resetPassword } from '../controllers/authController.js';
-import { protect } from '../middleware/auth.js';
+import { protect } from '../middleware/roleAuth.js';
 
 const router = express.Router();
 

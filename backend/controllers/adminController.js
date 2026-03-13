@@ -69,6 +69,8 @@ export async function registerAdmin(req, res) {
 export async function registerStudent(req, res) {
   try {
     const { name, enrollmentId, email, phone, tempPassword, department, class: classId } = req.body || {};
+    console.log("registerStudent API - input:", { name, enrollmentId, email, department, class: classId, userRole: req.user?.role });
+    
     if (!name || !email || !tempPassword) {
       return res.status(400).json({ error: "name, email and tempPassword are required" });
     }
@@ -104,6 +106,7 @@ export async function registerStudent(req, res) {
         existing.password = tempPassword;
       }
       await existing.save();
+      console.log("registerStudent API - updated existing student:", { _id: existing._id, class: existing.class, department: existing.department });
       const { password: _p, ...safeExisting } = existing.toObject();
       return res.status(200).json(safeExisting);
     }
@@ -124,6 +127,8 @@ export async function registerStudent(req, res) {
       role: "student",
       is_admin: false,
     });
+    
+    console.log("registerStudent API - created new student:", { _id: user._id, class: user.class, department: user.department });
     const { password: _, ...safe } = user.toObject();
     return res.status(201).json(safe);
   } catch (err) {
@@ -149,7 +154,17 @@ export async function registerStudent(req, res) {
 
 export async function listStudents(req, res) {
   try {
-    const items = await User.find({ role: "student" }).select("-password").populate("department class");
+    const filter = { role: "student" };
+    if (req.query.department) {
+      filter.department = req.query.department;
+    }
+    if (req.query.class) {
+      filter.class = req.query.class;
+    }
+    console.log("listStudents API - filter:", filter);
+    console.log("listStudents API - user role:", req.user?.role);
+    const items = await User.find(filter).select("-password").populate("department class");
+    console.log("listStudents API - found students:", items.length);
     res.json(items);
   } catch (err) {
     console.error("listStudents error:", err);
@@ -219,35 +234,9 @@ export async function updateStudent(req, res) {
   }
 }
 
-export async function deleteStudent(req, res) {
-  try {
-    const { id } = req.params;
-    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ error: "Invalid student ID" });
-    }
-
-    const student = await User.findById(id);
-    if (!student) {
-      return res.status(404).json({ error: "Student not found" });
-    }
-
-    if (student.role !== "student") {
-      return res.status(400).json({ error: "User is not a student" });
-    }
-
-    // Delete the student
-    await User.findByIdAndDelete(id);
-
-    res.json({ message: "Student deleted successfully", id });
-  } catch (err) {
-    console.error("deleteStudent error:", err);
-    res.status(500).json({ error: "Server error deleting student" });
-  }
-}
-
 export async function listDepartments(req, res) {
   try {
-    const items = await Department.find();
+    const items = await Department.find().populate('hod', 'name email');
     res.json(items);
   } catch (err) {
     console.error("listDepartments error:", err);
@@ -308,9 +297,10 @@ export async function createDepartment(req, res) {
       hod: hodId 
     });
     
-    // If we created a new HOD, update their assignedDepartment
+    // If we created a new HOD, update their department fields
     if (createdHod) {
-      createdHod.assignedDepartment = department._id;
+      createdHod.department = department._id;        // Where HOD was registered
+      createdHod.assignedDepartment = department._id; // Where HOD is assigned
       await createdHod.save();
     }
     
@@ -349,10 +339,25 @@ export async function getDepartment(req, res) {
 export async function listClasses(req, res) {
   try {
     const filter = req.query.department ? { department: req.query.department } : {};
-    const items = await ClassModel.find(filter).populate("department");
+    const items = await ClassModel.find(filter)
+      .populate("department")
+      .populate("classTeacher", "name email");
     res.json(items);
   } catch (err) {
     console.error("listClasses error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+}
+
+export async function listAvailableClasses(req, res) {
+  try {
+    const filter = req.query.department ? { department: req.query.department } : {};
+    // Only return classes that don't have a classTeacher assigned
+    const items = await ClassModel.find({ ...filter, classTeacher: { $exists: false } })
+      .populate("department");
+    res.json(items);
+  } catch (err) {
+    console.error("listAvailableClasses error:", err);
     res.status(500).json({ error: "Server error" });
   }
 }
@@ -466,10 +471,105 @@ export async function getClass(req, res) {
 
 export async function listNotices(req, res) {
   try {
-    const items = await Notice.find().sort({ createdAt: -1 });
+    const filter = {};
+    
+    // For HOD routes, show both global notices and their department notices
+    if (req.user.role === 'hod') {
+      const departmentId = req.user.department || req.user.assignedDepartment;
+      console.log("HOD Notices API - Filtering for department:", departmentId);
+      
+      filter.$or = [
+        // Global notices that HODs can see
+        { audience: "all" },
+        { audience: "student" },
+        { audience: "students" },
+        { audience: "admins" },
+        // Department-specific notices for their department
+        { 
+          audience: "department_students",
+          targetDepartment: departmentId
+        }
+      ];
+      console.log("HOD notice filter:", filter);
+    }
+    // For Teacher routes, show global notices and their class notices
+    else if (req.user.role === 'teacher') {
+      const classId = req.user.assignedClass;
+      console.log("Teacher Notices API - Filtering for class:", classId);
+      
+      filter.$or = [
+        // Global notices that Teachers can see
+        { audience: "all" },
+        { audience: "student" },
+        { audience: "students" },
+        { audience: "admins" },
+        // Class-specific notices for their class
+        { 
+          audience: "class_students",
+          targetClass: classId
+        }
+      ];
+      console.log("Teacher notice filter:", filter);
+    }
+    // For admin routes, exclude department-specific notices (only show global notices)
+    else if (req.user.role === 'admin') {
+      filter.$or = [
+        { audience: "all" },
+        { audience: "student" },
+        { audience: "students" },
+        { audience: "admins" }
+      ];
+      // Exclude department_students and class_students audience from admin view
+      filter.audience = { $nin: ["department_students", "class_students"] };
+      console.log("Admin view - excluding department and class-specific notices");
+    }
+    
+    // If department query parameter is provided (for admin filtering), also apply it
+    if (req.query.department && req.user.role === 'admin') {
+      filter.department = req.query.department;
+      console.log("Filtering notices by department:", req.query.department);
+    }
+    
+    const items = await Notice.find(filter).sort({ createdAt: -1 });
+    console.log(`Found ${items.length} notices with filter:`, filter);
     res.json(items);
   } catch (err) {
     console.error("listNotices error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+}
+
+export async function listNoticesForStudent(req, res) {
+  try {
+    const student = req.user;
+    console.log("Fetching notices for student:", student.email, "department:", student.department, "class:", student.class);
+    
+    const filter = {
+      $or: [
+        // Global notices for all students
+        { audience: "all" },
+        { audience: "student" },
+        { audience: "students" },
+        // Department-specific notices for this student's department
+        { 
+          audience: "department_students",
+          targetDepartment: student.department
+        },
+        // Class-specific notices for this student's class
+        { 
+          audience: "class_students",
+          targetClass: student.class
+        }
+      ]
+    };
+    
+    // Exclude notices from other departments and classes (unless they are global)
+    const items = await Notice.find(filter).sort({ createdAt: -1 });
+    console.log(`Found ${items.length} notices for student ${student.email} in department ${student.department}, class ${student.class}`);
+    
+    res.json(items);
+  } catch (err) {
+    console.error("listNoticesForStudent error:", err);
     res.status(500).json({ error: "Server error" });
   }
 }
@@ -478,13 +578,46 @@ export async function createNotice(req, res) {
   try {
     const { title, body, audience, attachment } = req.body || {};
     if (!title || !String(title).trim()) return res.status(400).json({ error: "Notice title is required" });
-    const validAudience = ["all", "student", "students", "admins"].includes(audience) ? audience : "all";
-    const n = await Notice.create({
+    
+    // For HOD routes, set audience to department_students and assign targetDepartment
+    let noticeData = {
       title: String(title).trim(),
       body: body ? String(body).trim() : "",
-      audience: validAudience,
+      audience: "all", // Default for admin
       attachment: attachment || undefined,
-    });
+    };
+    
+    // Add department if user is HOD and has department access
+    if (req.user.role === 'hod' && (req.user.department || req.user.assignedDepartment)) {
+      const departmentId = req.user.department || req.user.assignedDepartment;
+      noticeData = {
+        title: String(title).trim(),
+        body: body ? String(body).trim() : "",
+        audience: "department_students", // HOD notices are only for department students
+        attachment: attachment || undefined,
+        department: departmentId,
+        targetDepartment: departmentId, // Explicitly set target department
+        createdBy: req.user._id,
+      };
+      console.log("Creating HOD notice for department:", departmentId);
+    }
+    // Add class if user is Teacher and has class access
+    else if (req.user.role === 'teacher' && req.user.assignedClass) {
+      const classId = req.user.assignedClass;
+      noticeData = {
+        title: String(title).trim(),
+        body: body ? String(body).trim() : "",
+        audience: "class_students", // Teacher notices are only for class students
+        attachment: attachment || undefined,
+        class: classId,
+        targetClass: classId, // Explicitly set target class
+        createdBy: req.user._id,
+      };
+      console.log("Creating Teacher notice for class:", classId);
+    }
+    
+    const n = await Notice.create(noticeData);
+    console.log("Notice created:", n);
     res.status(201).json(n);
   } catch (err) {
     console.error("createNotice error:", err);
@@ -494,7 +627,55 @@ export async function createNotice(req, res) {
 
 export async function listElections(req, res) {
   try {
-    const elections = await Election.find()
+    const filter = {};
+    
+    // For HOD routes, show global and department-level elections
+    if (req.user.role === 'hod') {
+      const departmentId = req.user.department || req.user.assignedDepartment;
+      console.log("HOD Elections API - Filtering for department:", departmentId);
+      
+      filter.$or = [
+        // Global elections
+        { level: "global" },
+        // Department-level elections for their department
+        { 
+          level: "department",
+          department: departmentId
+        }
+      ];
+      console.log("HOD election filter:", filter);
+    }
+    // For Teacher routes, show global and class-level elections
+    else if (req.user.role === 'teacher') {
+      const classId = req.user.assignedClass;
+      console.log("Teacher Elections API - Filtering for class:", classId);
+      
+      filter.$or = [
+        // Global elections
+        { level: "global" },
+        // Class-level elections for their class
+        { 
+          level: "class",
+          class: classId
+        }
+      ];
+      console.log("Teacher election filter:", filter);
+    }
+    // For admin routes, show all elections
+    else if (req.user.role === 'admin') {
+      // No filtering for admin - show all
+      console.log("Admin view - showing all elections");
+    }
+    
+    // Additional query parameter filtering for admin
+    if (req.query.department && req.user.role === 'admin') {
+      filter.department = req.query.department;
+    }
+    if (req.query.class && req.user.role === 'admin') {
+      filter.class = req.query.class;
+    }
+    
+    const elections = await Election.find(filter)
       .sort({ createdAt: -1 })
       .populate("department class");
 
@@ -517,23 +698,45 @@ export async function createElection(req, res) {
     const { title, description, startDate, endDate, level, department, class: classId } = req.body || {};
     if (!title || !String(title).trim()) return res.status(400).json({ error: "Election title is required" });
 
-    const normalizedLevel = ["global", "department", "class"].includes(level) ? level : "global";
-
+    let normalizedLevel = level;
     let deptRef;
     let classRef;
 
-    if (normalizedLevel === "department") {
-      if (!department || !mongoose.Types.ObjectId.isValid(department)) {
-        return res.status(400).json({ error: "Valid department is required for department-level elections" });
+    // Set level and validate based on user role
+    if (req.user.role === 'teacher') {
+      // Teachers can only create class-level elections for their assigned class
+      normalizedLevel = "class";
+      classRef = req.user.assignedClass;
+      console.log("Teacher creating class-level election for class:", classRef);
+    } else if (req.user.role === 'hod') {
+      // HODs can create department-level elections for their department
+      if (level === "department" || !level) {
+        normalizedLevel = "department";
+        deptRef = req.user.department || req.user.assignedDepartment;
+        console.log("HOD creating department-level election for department:", deptRef);
+      } else if (level === "global") {
+        normalizedLevel = "global";
+        console.log("HOD creating global election");
+      } else {
+        return res.status(403).json({ error: "HODs can only create department-level or global elections" });
       }
-      deptRef = department;
-    }
+    } else if (req.user.role === 'admin') {
+      // Admins can create any level
+      normalizedLevel = ["global", "department", "class"].includes(level) ? level : "global";
+      
+      if (normalizedLevel === "department") {
+        if (!department || !mongoose.Types.ObjectId.isValid(department)) {
+          return res.status(400).json({ error: "Valid department is required for department-level elections" });
+        }
+        deptRef = department;
+      }
 
-    if (normalizedLevel === "class") {
-      if (!classId || !mongoose.Types.ObjectId.isValid(classId)) {
-        return res.status(400).json({ error: "Valid class is required for class-level elections" });
+      if (normalizedLevel === "class") {
+        if (!classId || !mongoose.Types.ObjectId.isValid(classId)) {
+          return res.status(400).json({ error: "Valid class is required for class-level elections" });
+        }
+        classRef = classId;
       }
-      classRef = classId;
     }
 
     const e = await Election.create({
@@ -559,6 +762,18 @@ export async function addCandidate(req, res) {
 
     const election = await Election.findById(id);
     if (!election) return res.status(404).json({ error: "Election not found" });
+
+    // Access control for teachers
+    if (req.user.role === 'teacher') {
+      // Teachers can only add candidates to their class's elections
+      if (election.level === "class" && election.class.toString() !== req.user.assignedClass.toString()) {
+        return res.status(403).json({ error: "Access denied. You can only add candidates to your class's elections." });
+      }
+      // Teachers cannot add candidates to department or global elections
+      if (election.level !== "class") {
+        return res.status(403).json({ error: "Teachers can only add candidates to class-level elections." });
+      }
+    }
 
     const { userId, studentId, position } = req.body || {};
     if (!userId && !studentId) {
@@ -612,12 +827,53 @@ export async function electionResults(req, res) {
     const election = await Election.findById(electionId).populate("department class");
     if (!election) return res.status(404).json({ error: "Election not found" });
 
+    // Access control based on user role
+    if (req.user.role === 'teacher') {
+      // Teachers can only view results for their class's elections or global elections
+      if (election.level === "class" && election.class._id.toString() !== req.user.assignedClass.toString()) {
+        return res.status(403).json({ error: "Access denied. You can only view results for your class's elections." });
+      }
+    } else if (req.user.role === 'hod') {
+      // HODs can only view results for their department's elections or global elections
+      if (election.level === "department" && election.department._id.toString() !== (req.user.department || req.user.assignedDepartment).toString()) {
+        return res.status(403).json({ error: "Access denied. You can only view results for your department's elections." });
+      }
+    }
+
     const candidates = await Candidate.find({ election: electionId })
       .sort({ votes: -1 })
       .populate("student", "name email studentId department class");
 
-    const winner = candidates.length > 0 ? candidates[0] : null;
-    res.json({ election, candidates, winner });
+    let winner = null;
+    let isDraw = false;
+    let tiedCandidates = [];
+
+    if (candidates.length > 0) {
+      const topVotes = candidates[0].votes;
+      
+      // Check if there's a tie for first place
+      const topCandidates = candidates.filter(candidate => candidate.votes === topVotes);
+      
+      if (topCandidates.length > 1 && topVotes > 0) {
+        // It's a draw
+        isDraw = true;
+        tiedCandidates = topCandidates;
+        winner = null;
+      } else if (topVotes > 0) {
+        // Clear winner
+        winner = candidates[0];
+        isDraw = false;
+      }
+    }
+
+    res.json({ 
+      election, 
+      candidates, 
+      winner, 
+      isDraw, 
+      tiedCandidates,
+      message: isDraw ? "Election resulted in a draw - no winner declared" : winner ? "Winner declared" : "No votes cast"
+    });
   } catch (err) {
     console.error("electionResults error:", err);
     res.status(500).json({ error: "Server error" });
@@ -626,6 +882,7 @@ export async function electionResults(req, res) {
 
 export async function getDashboardStats(req, res) {
   try {
+    console.log("Getting dashboard stats...");
     const now = new Date();
     const [deptCount, studentCount, allElections] = await Promise.all([
       Department.countDocuments(),
@@ -637,9 +894,150 @@ export async function getDashboardStats(req, res) {
         (!e.startDate || new Date(e.startDate) <= now) &&
         (!e.endDate || new Date(e.endDate) >= now)
     ).length;
+    
+    console.log("Stats calculated:", { deptCount, studentCount, activeElections });
     res.json({ deptCount, studentCount, activeElections });
   } catch (err) {
     console.error("getDashboardStats error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+}
+
+export async function deleteDepartment(req, res) {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid department ID" });
+    }
+
+    console.log("Deleting department:", id);
+
+    // Check if department exists
+    const department = await Department.findById(id);
+    if (!department) {
+      return res.status(404).json({ error: "Department not found" });
+    }
+
+    // Find all classes in this department
+    const classesInDepartment = await ClassModel.find({ department: id });
+    console.log(`Found ${classesInDepartment.length} classes in department`);
+
+    // Delete all students in these classes
+    const classIds = classesInDepartment.map(c => c._id);
+    const deletedStudents = await User.deleteMany({ 
+      role: "student",
+      class: { $in: classIds }
+    });
+    console.log(`Deleted ${deletedStudents.deletedCount} students in department classes`);
+
+    // Remove students from any candidates
+    await Candidate.deleteMany({ student: { $in: classIds } });
+
+    // Delete all classes in this department
+    const deletedClasses = await ClassModel.deleteMany({ department: id });
+    console.log(`Deleted ${deletedClasses.deletedCount} classes in department`);
+
+    // Update any remaining students to remove department reference
+    await User.updateMany(
+      { department: id },
+      { $unset: { department: 1 } }
+    );
+    console.log("Updated remaining students to remove department reference");
+
+    // Update HOD to remove department reference
+    await User.updateMany(
+      { $or: [{ department: id }, { assignedDepartment: id }] },
+      { $unset: { department: 1, assignedDepartment: 1 } }
+    );
+    console.log("Updated HODs to remove department reference");
+
+    // Delete the department
+    await Department.findByIdAndDelete(id);
+    console.log("Department deleted successfully:", id);
+
+    res.json({ 
+      message: "Department deleted successfully",
+      deletedClasses: deletedClasses.deletedCount,
+      deletedStudents: deletedStudents.deletedCount
+    });
+  } catch (err) {
+    console.error("deleteDepartment error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+}
+
+export async function deleteClass(req, res) {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid class ID" });
+    }
+
+    console.log("Deleting class:", id);
+
+    // Check if class exists
+    const classItem = await ClassModel.findById(id);
+    if (!classItem) {
+      return res.status(404).json({ error: "Class not found" });
+    }
+
+    // Delete all students in this class (complete deletion from database)
+    const deletedStudents = await User.deleteMany({ 
+      role: "student",
+      class: id 
+    });
+    console.log(`Deleted ${deletedStudents.deletedCount} students in class`);
+
+    // Remove these students from any candidates
+    await Candidate.deleteMany({ student: { $in: deletedStudents.deletedCount > 0 ? id : [] } });
+
+    // Update teachers to remove class reference
+    await User.updateMany(
+      { assignedClass: id },
+      { $unset: { assignedClass: 1 } }
+    );
+    console.log("Updated teachers to remove class reference");
+
+    // Delete the class
+    await ClassModel.findByIdAndDelete(id);
+    console.log("Class deleted successfully:", id);
+
+    res.json({ 
+      message: "Class deleted successfully",
+      deletedStudents: deletedStudents.deletedCount
+    });
+  } catch (err) {
+    console.error("deleteClass error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+}
+
+export async function deleteStudent(req, res) {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid student ID" });
+    }
+
+    console.log("Deleting student:", id);
+
+    // Check if student exists and is actually a student
+    const student = await User.findOne({ _id: id, role: "student" });
+    if (!student) {
+      return res.status(404).json({ error: "Student not found" });
+    }
+
+    // Remove student from any candidates
+    await Candidate.deleteMany({ student: id });
+    console.log("Removed student from candidates");
+
+    // Delete the student
+    await User.findByIdAndDelete(id);
+    console.log("Student deleted successfully:", id);
+
+    res.json({ message: "Student deleted successfully" });
+  } catch (err) {
+    console.error("deleteStudent error:", err);
     res.status(500).json({ error: "Server error" });
   }
 }
